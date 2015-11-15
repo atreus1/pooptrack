@@ -1,0 +1,29 @@
+<ion-view view-title="Profile">
+  <ion-content padding="true" class="has-header">
+    <ion-list ng-repeat="p in profile">
+      <ion-item>jocks</ion-item>
+      <ion-item># of dumps - {{p.count}}</ion-item>
+      <ion-item class="item-thumbnail-left">
+        <img src='img/{{p.type}}.png'>
+        <h2>average dump</h2>
+        <p>{{p.type}}</p>
+      </ion-item>
+    </ion-list>
+    <a href="#/page1" class="button button-assertive button-block button-large">log out</a>
+  </ion-content>
+
+<!--   <ion-content>
+    <ion-list>
+      <ion-item class="item-remove-animate item-avatar item-icon-right" ng-repeat="chat in chats" type="item-text-wrap" href="#/tab/chats/{{chat.id}}">
+        <img ng-src="{{chat.face}}">
+        <h2>{{chat.name}}</h2>
+        <p>{{chat.lastText}}</p>
+        <i class="icon ion-chevron-right icon-accessory"></i>
+
+        <ion-option-button class="button-assertive" ng-click="remove(chat)">
+          Delete
+        </ion-option-button>
+      </ion-item>
+    </ion-list>
+  </ion-content> -->
+</ion-view>

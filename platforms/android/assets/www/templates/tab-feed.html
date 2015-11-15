@@ -1,0 +1,13 @@
+<ion-view view-title="Feed">
+  <ion-content padding="true" class="has-header">
+   <ion-refresher pulling-text="Pull to refresh..." on-refresh="doRefresh()">
+  </ion-refresher>
+   <ion-list >
+      <ion-item ng-repeat="f in feed" class="item-thumbnail-left">
+        <img src="img/{{f.type}}.png">
+        <h2>{{f.name}}</h2>
+        <p>{{f.date}}<br/> {{f.rate}}<br/> {{f.event_id}}</p>
+      </ion-item>
+    </ion-list>
+  </ion-content>
+</ion-view>
