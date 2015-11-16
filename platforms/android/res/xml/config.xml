@@ -36,11 +36,11 @@
     <preference name="UIWebViewBounce" value="false" />
     <preference name="DisallowOverscroll" value="true" />
     <preference name="android-minSdkVersion" value="16" />
-    <preference name="BackupWebStorage" value="none" />
     <preference name="SplashScreen" value="screen" />
     <preference name="SplashScreenDelay" value="3000" />
     <preference name="android-minSdkVersion" value="15" />
     <preference name="android-targetSdkVersion" value="23" />
+    <preference name="BackupWebStorage" value="none" />
     <allow-navigation href="*://userapan.myds.me/*" />
     <allow-intent href="*://userapan.myds.me/*" />
     <icon src="resources/android/icon/drawable-xhdpi-icon.png" />

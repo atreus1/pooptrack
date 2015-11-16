@@ -2,22 +2,39 @@ angular.module('starter.controllers', [])
 
 .controller('MainCtrl', function($scope) {})
 
-.controller('LoginCtrl', function($scope, LoginService, $ionicPopup, $state) {
-  $scope.user = {};
-
-  $scope.login = function() {
-    LoginService.loginUser($scope.user.username, $scope.user.password).success(function(user) {
-      $state.go('tab.feed');
-    }).error(function(user) {
-      var alertPopup = $ionicPopup.alert({
-        title: 'Login failed!',
-        template: 'Please check your credentials!'
-      });
-    });
+.controller('LoginCtrl', function($scope, LoginService, $ionicPopup, $state, $http) {
+  // TODO skriv om POST delen
+  // http://www.codeproject.com/Articles/1005150/Posting-data-from-Ionic-app-to-PHP-server
+  if(!window.localStorage['user_id']) {
+         var d = new Date();
+         var n = d.getTime();
+         var r = Math.floor((Math.random() * n) / 1000000);
+         window.localStorage['user_id'] = r;
+             var welcomePopup = $ionicPopup.prompt({
+              title : 'welcome dumper! yes',
+              subTitle: 'you have been assigned the wounderfull user_id of #' + r,
+              inputType: 'text',
+              inputPlaceholder: 'your username .. press cancel anon',
+             }).then(function(res) {
+              if(!res){
+                window.localStorage['user_name'] = "anon";
+                $http.post("http://userapan.myds.me/insertUser.php?u="+r+"&n=anon");
+              }
+              else{
+                window.localStorage['user_name'] = res;
+                $http.post("http://userapan.myds.me/insertUser.php?u="+r+"&n="+res);
+              }
+              $state.go('tab.feed');
+            });
+  }
+  else{
+    $state.go('tab.feed');
   }
 })
 
 .controller('FeedCtrl', function($scope, $http) {
+  // TODO  uppdatera med local cache! så vi klarar oss utan internet
+  // https://blog.nraboy.com/2014/06/saving-data-with-ionicframework/
   $scope.$on('$ionicView.beforeEnter', function() {
     $http.get('http://userapan.myds.me/getFeed.php').success(function(data) {
          $scope.feed = data;
@@ -35,7 +52,6 @@ angular.module('starter.controllers', [])
      });
      };
 })
-
 
 .controller('NearbyCtrl', function($scope) {
   // With the new view caching in Ionic, Controllers are only called
@@ -57,6 +73,10 @@ angular.module('starter.controllers', [])
 // })
 
 .controller('AddCtrl', function($scope, $http, $ionicPopup) {
+
+  // TODO  uppdatera med local cache! så vi klarar oss utan internet och den uppdateras en gång
+  // https://blog.nraboy.com/2014/06/saving-data-with-ionicframework/
+
   $http.get('http://userapan.myds.me/getPoops.php').success(function(data) {
          $scope.poops = data;
      });
@@ -89,7 +109,9 @@ angular.module('starter.controllers', [])
             //don't allow the user to close unless he enters wifi password
             e.preventDefault();
           } else {
-              $http.post("http://userapan.myds.me/insertPoops.php?u=jocke&t="+type+"&r="+$scope.choice.value).success(function(data){      
+              // TODO skriv om POST delen
+              // http://www.codeproject.com/Articles/1005150/Posting-data-from-Ionic-app-to-PHP-server
+              $http.post("http://userapan.myds.me/insertPoops.php?u="+window.localStorage['user_id']+"&t="+type+"&r="+$scope.choice.value).success(function(data){      
             $scope.tasks = data;
             });
           return $scope.choice.value;
@@ -99,9 +121,7 @@ angular.module('starter.controllers', [])
     ]
    });
         //end of popup
-
   };
-
 })
 
 .controller('FriendsCtrl', function($scope, $http) {
@@ -110,11 +130,30 @@ $http.get('http://userapan.myds.me/getFriends.php').success(function(data) {
      });
 })
 
-.controller('ProfileCtrl', function($scope, $http) {
+.controller('ProfileCtrl', function($scope, $http, $ionicPopup, $state) {
 
-$scope.$on('$ionicView.beforeEnter', function() {
-    $http.get('http://userapan.myds.me/getProfile.php?u=jocke').success(function(data) {
-         $scope.profile = data;
+$scope.erase = function() {
+   var confirmPopup = $ionicPopup.confirm({
+     title: 'ggwp',
+     template: 'sql data will remain on server for purely scientific reasons'
+   });
+   confirmPopup.then(function(res) {
+     if(res) {
+        window.localStorage.clear();
+        $state.go('login');
+     } else {
+     }
+   });
+ };
+
+  $scope.$on('$ionicView.beforeEnter', function() {
+    $scope.localId = window.localStorage['user_id'];
+    $scope.localName = window.localStorage['user_name'];
+      // TODO skriv om GET delen
+      // http://www.codeproject.com/Articles/1005150/Posting-data-from-Ionic-app-to-PHP-server
+      $http.get("http://userapan.myds.me/getProfile.php?u="+window.localStorage['user_id']).success(function(data) {
+           $scope.profile = data;
+        });
       });
-    });
+
 });

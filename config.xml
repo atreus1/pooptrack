@@ -18,6 +18,7 @@
   <preference name="SplashScreenDelay" value="3000"/>
   <preference name="android-minSdkVersion" value="15"/>
   <preference name="android-targetSdkVersion" value="23"/>
+  <preference name="BackupWebStorage" value="none" />
   <allow-navigation href="*://userapan.myds.me/*"/>
   <allow-intent href="*://userapan.myds.me/*"/>
   <feature name="StatusBar">
