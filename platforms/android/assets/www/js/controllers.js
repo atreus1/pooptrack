@@ -3,6 +3,8 @@ angular.module('starter.controllers', [])
 .controller('MainCtrl', function($scope) {})
 
 .controller('LoginCtrl', function($scope, LoginService, $ionicPopup, $state, $http) {
+  // TODO skriv om POST delen
+  // http://www.codeproject.com/Articles/1005150/Posting-data-from-Ionic-app-to-PHP-server
   if(!window.localStorage['user_id']) {
          var d = new Date();
          var n = d.getTime();
@@ -14,33 +16,47 @@ angular.module('starter.controllers', [])
               inputType: 'text',
               inputPlaceholder: 'your username .. press cancel anon',
              }).then(function(res) {
+              var link = "http://tolva.nu/poop/insertUser.php";
               if(!res){
                 window.localStorage['user_name'] = "anon";
-                $http.post("http://userapan.myds.me/insertUser.php?u="+r+"&n=anon");
+              $http.post(link, {user_id: r, name: window.localStorage['user_name']})
+                .success(function(data){      
+                  $scope.tasks = data;
+              });
               }
               else{
                 window.localStorage['user_name'] = res;
-                $http.post("http://userapan.myds.me/insertUser.php?u="+r+"&n="+res);
+               $http.post(link, {user_id: r, name: window.localStorage['user_name']})
+                .success(function(data){      
+                  $scope.tasks = data;
+               });
               }
               $state.go('tab.feed');
             });
   }
-  else{
+  else {
     $state.go('tab.feed');
   }
 })
 
 .controller('FeedCtrl', function($scope, $http) {
-  // uppdatera med local cache! så vi klarar oss utan internet
+  // TODO  uppdatera med local cache! så vi klarar oss utan internet
   // https://blog.nraboy.com/2014/06/saving-data-with-ionicframework/
   $scope.$on('$ionicView.beforeEnter', function() {
-    $http.get('http://userapan.myds.me/getFeed.php').success(function(data) {
-         $scope.feed = data;
+    $http.get('http://tolva.nu/poop/getFeed.php')
+      .success(function(data) {
+            $scope.feed = data;
+            window.localStorage.setItem("feed", JSON.stringify(data));
+        })
+        .error(function(data) {
+            if(window.localStorage.getItem("feed") !== undefined) {
+                $scope.profile = JSON.parse(window.localStorage.getItem("feed"));
+            }
+        });
       });
-    });
     
      $scope.doRefresh = function() {
-      $http.get('http://userapan.myds.me/getFeed.php')
+      $http.get('http://tolva.nu/poop/getFeed.php')
      .success(function(data) {
        $scope.feed = data;
      })
@@ -71,14 +87,15 @@ angular.module('starter.controllers', [])
 // })
 
 .controller('AddCtrl', function($scope, $http, $ionicPopup) {
-
-  // uppdatera med local cache! så vi klarar oss utan internet
-  // https://blog.nraboy.com/2014/06/saving-data-with-ionicframework/
-
-  $http.get('http://userapan.myds.me/getPoops.php').success(function(data) {
-         $scope.poops = data;
+  if(!window.localStorage['poops']) { 
+    $http.get('http://tolva.nu/poop/getPoops.php')
+    .success(function(data) {
+         window.localStorage.setItem("poops", JSON.stringify(data));
      });
-
+  } 
+  
+  $scope.poops = JSON.parse(window.localStorage.getItem("poops"));
+  
   $scope.settings = {
     enableFriends: true
   };
@@ -107,9 +124,11 @@ angular.module('starter.controllers', [])
             //don't allow the user to close unless he enters wifi password
             e.preventDefault();
           } else {
-              $http.post("http://userapan.myds.me/insertPoops.php?u="+window.localStorage['user_id']+"&t="+type+"&r="+$scope.choice.value).success(function(data){      
-            $scope.tasks = data;
-            });
+              var link = "http://tolva.nu/poop/insertPoops.php";
+              $http.post(link, {user_id: window.localStorage['user_id'], type: type, rate: $scope.choice.value})
+                .success(function(data){      
+                  $scope.tasks = data;
+              });
           return $scope.choice.value;
           }
         }
@@ -121,7 +140,7 @@ angular.module('starter.controllers', [])
 })
 
 .controller('FriendsCtrl', function($scope, $http) {
-$http.get('http://userapan.myds.me/getFriends.php').success(function(data) {
+$http.get('http://tolva.nu/poop/getFriends.php').success(function(data) {
          $scope.users = data;
      });
 })
@@ -145,7 +164,9 @@ $scope.erase = function() {
   $scope.$on('$ionicView.beforeEnter', function() {
     $scope.localId = window.localStorage['user_id'];
     $scope.localName = window.localStorage['user_name'];
-      $http.get("http://userapan.myds.me/getProfile.php?u="+window.localStorage['user_id']).success(function(data) {
+      // TODO skriv om GET delen
+      // http://www.codeproject.com/Articles/1005150/Posting-data-from-Ionic-app-to-PHP-server
+      $http.get("http://tolva.nu/poop/getProfile.php?u="+window.localStorage['user_id']).success(function(data) {
            $scope.profile = data;
         });
       });

@@ -87,15 +87,16 @@ angular.module('starter.controllers', [])
 // })
 
 .controller('AddCtrl', function($scope, $http, $ionicPopup) {
-  if(!window.localStorage['poops']) { 
-    $http.get('http://tolva.nu/poop/getPoops.php')
-    .success(function(data) {
-         window.localStorage.setItem("poops", JSON.stringify(data));
-     });
-  } 
-  
-  $scope.poops = JSON.parse(window.localStorage.getItem("poops"));
-  
+  $scope.$on('$ionicView.beforeEnter', function() {
+      if(window.localStorage['poops'] == undefined) { 
+        $http.get('http://tolva.nu/poop/getPoops.php')
+        .success(function(data) {
+          $scope.poops = data;
+             window.localStorage.setItem("poops", JSON.stringify(data));
+         });
+      } 
+      $scope.poops = JSON.parse(window.localStorage.getItem("poops"));
+  });
   $scope.settings = {
     enableFriends: true
   };
