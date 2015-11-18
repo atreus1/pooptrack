@@ -189,6 +189,7 @@ angular.module('starter.controllers', ['ngCordova'])
 })
 
 .controller('NearbyCtrl', function($scope, $state, $cordovaGeolocation, $ionicLoading, $compile) {
+
   $scope.init = function() {
         var options = {timeout: 10000, enableHighAccuracy: true};
         $cordovaGeolocation.getCurrentPosition(options).then(function(position) {
@@ -207,14 +208,43 @@ angular.module('starter.controllers', ['ngCordova'])
         var infowindow = new google.maps.InfoWindow({
           content: compiled[0]
         });
-        var marker = new google.maps.Marker({
-          position: myLatlng,
-          map: map,
-          title: 'asdas'
-        });
-        google.maps.event.addListener(marker, 'click', function() {
-          infowindow.open(map,marker);
-        });
+
+        var feed = JSON.parse(window.localStorage['feed']);
+        var marker = [];
+
+        // console.log(feed[1]);
+
+        for(var i = 0; i < feed.length; i++) {
+          var tempPos = feed[i].location.split(",");
+          var pos = new google.maps.LatLng(tempPos[0], tempPos[1]);
+          marker[i] = new google.maps.Marker({
+            position: pos,
+            map: map,
+            title: "HEJ"
+          });
+
+          // google.maps.event.addListener(marker[i], 'click', function() {
+          //   infowindow.open(map,marker[i]);
+          //   console.log("hiora");
+          // });
+        }
+
+        // var marker = new google.maps.Marker({
+        //   position: myLatlng,
+        //   map: map,
+        //   title: 'asdas'
+        // });
+
+        // var myLatlng2 = new google.maps.LatLng(position.coords.latitude, "11.9690000");
+
+        // var marker2 = new google.maps.Marker({
+        //   position: myLatlng2,
+        //   map: map,
+        //   title: 'asdas'
+        // });        
+        // google.maps.event.addListener(marker, 'click', function() {
+        //   infowindow.open(map,marker);
+        // });
         $scope.map = map;
         }, function(error){
           console.log("Could not get location");
@@ -244,7 +274,7 @@ angular.module('starter.controllers', ['ngCordova'])
 //   $scope.chat = Chats.get($stateParams.chatId);
 // })
 
-.controller('AddCtrl', function($scope, $http, $ionicPopup) {
+.controller('AddCtrl', function($scope, $http, $ionicPopup, $cordovaGeolocation) {
   $scope.$on('$ionicView.beforeEnter', function() {
       if(window.localStorage['poops'] == undefined) { 
         $http.get('http://tolva.nu/poop/getPoops.php')
@@ -268,6 +298,14 @@ angular.module('starter.controllers', ['ngCordova'])
 
   $scope.add = function(type) {
     $scope.choice = {};
+    var lat = "";
+    var longi = "";
+
+    var options = {timeout: 10000, enableHighAccuracy: true};
+    $cordovaGeolocation.getCurrentPosition(options).then(function(position) {
+      lat = position.coords.latitude;
+      longi = position.coords.longitude;
+    });    
 
     var alertPopup = $ionicPopup.alert({
       title: 'poopy addy! rating',
@@ -290,6 +328,7 @@ angular.module('starter.controllers', ['ngCordova'])
                 'tag': "addPoop",      
                 'user_id': window.localStorage['user_id'],
                 'type': type,
+                'location': lat+","+longi,
                 'rate': $scope.choice.value
               };
 
@@ -354,12 +393,14 @@ angular.module('starter.controllers', ['ngCordova'])
       'user_id': window.localStorage['user_id']
     };
 
+    console.log("HPIAHDGOIHG");
+
     $http.post(url, sendData)
     .success(function(data, status, headers, config) {
       console.log(data);
 
       if (data.success === 1) {
-        return data.dumps;
+        $scope.dumps = data.dumps;
       } else {
         console.log(data.error_msg);
         var welcomePopup = $ionicPopup.alert({

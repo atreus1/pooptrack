@@ -188,9 +188,41 @@ angular.module('starter.controllers', ['ngCordova'])
   };
 })
 
-.controller('NearbyCtrl', function($scope, $state, $cordovaGeolocation, $ionicLoading, $compile) {
+.controller('NearbyCtrl', function($scope, $state, $http, $cordovaGeolocation, $ionicLoading, $compile) {
+	
 
-  $scope.init = function() {
+
+
+
+  	$scope.$on('$ionicView.beforeEnter', function() {
+
+	    var sendData = {
+	      'tag': "getFeed",      
+	      'user_id': window.localStorage['user_id']
+	    };
+
+	    $http.post(url, sendData)
+	    .success(function(data, status, headers, config) {
+	      console.log(data);
+
+	      if (data.success === 1) {
+	        console.log("getting feed :)");
+
+	        $scope.feed = data.feed;
+	        window.localStorage.setItem("feed", JSON.stringify(data.feed));
+
+	      } else {
+	        console.log(data.error_msg);
+	        var welcomePopup = $ionicPopup.alert({
+	          title : "Could not get feed",
+	          subTitle: data.error_msg
+	        });        
+	      }
+	    })
+	    .error(function(data, status, headers, config) {
+	      console.log('error');
+	    });
+
         var options = {timeout: 10000, enableHighAccuracy: true};
         $cordovaGeolocation.getCurrentPosition(options).then(function(position) {
           var myLatlng = new google.maps.LatLng(position.coords.latitude, position.coords.longitude);
@@ -220,7 +252,7 @@ angular.module('starter.controllers', ['ngCordova'])
           marker[i] = new google.maps.Marker({
             position: pos,
             map: map,
-            title: "HEJ"
+            title: feed[i].name
           });
 
           // google.maps.event.addListener(marker[i], 'click', function() {
@@ -249,26 +281,27 @@ angular.module('starter.controllers', ['ngCordova'])
         }, function(error){
           console.log("Could not get location");
         });
-    };
+    
     // google.maps.event.addDomListener(window, 'load', initialize);
-    $scope.centerOnMe = function() {
-        if(!$scope.map) {
-            return;
-        }
-        $scope.loading = $ionicLoading.show({
-          content: 'Getting current location...',
-          showBackdrop: false
-        });
-        navigator.geolocation.getCurrentPosition(function(pos) {
-          $scope.map.setCenter(new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude));
-          $scope.loading.hide();
-        }, function(error) {
-          alert('Unable to get location: ' + error.message);
-        });
-    };
-    $scope.clickTest = function() {
-        alert('Example of infowindow with ng-click')
-    };
+	    $scope.centerOnMe = function() {
+	        if(!$scope.map) {
+	            return;
+	        }
+	        $scope.loading = $ionicLoading.show({
+	          content: 'Getting current location...',
+	          showBackdrop: false
+	        });
+	        navigator.geolocation.getCurrentPosition(function(pos) {
+	          $scope.map.setCenter(new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude));
+	          $scope.loading.hide();
+	        }, function(error) {
+	          alert('Unable to get location: ' + error.message);
+	        });
+	    };
+	    $scope.clickTest = function() {
+	        alert('Example of infowindow with ng-click')
+	    };
+	});
 })
 // .controller('ChatDetailCtrl', function($scope, $stateParams, Chats) {
 //   $scope.chat = Chats.get($stateParams.chatId);
