@@ -36,8 +36,16 @@ angular.module('starter.controllers', [])
   // TODO  uppdatera med local cache! så vi klarar oss utan internet
   // https://blog.nraboy.com/2014/06/saving-data-with-ionicframework/
   $scope.$on('$ionicView.beforeEnter', function() {
-    $http.get('http://tolva.nu/getFeed.php').success(function(data) {
-         $scope.feed = data;
+    $http.get('http://tolva.nu/getFeed.php')
+      .success(function(data) {
+            $scope.feed = data;
+            window.localStorage.setItem("feed", JSON.stringify(data));
+        })
+        .error(function(data) {
+            if(window.localStorage.getItem("feed") !== undefined) {
+                $scope.profile = JSON.parse(window.localStorage.getItem("feed"));
+            }
+        });
       });
     });
     
