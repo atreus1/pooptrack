@@ -16,13 +16,20 @@ angular.module('starter.controllers', [])
               inputType: 'text',
               inputPlaceholder: 'your username .. press cancel anon',
              }).then(function(res) {
+              var link = "http://tolva.nu/insertUser.php";
               if(!res){
                 window.localStorage['user_name'] = "anon";
-                $http.post("http://tolva.nu/insertUser.php?u="+r+"&n=anon");
+              $http.post(link, {user_id: r, name: window.localStorage['user_name']})
+                .success(function(data){      
+                  $scope.tasks = data;
+              });
               }
               else{
                 window.localStorage['user_name'] = res;
-                $http.post("http://tolva.nu/insertUser.php?u="+r+"&n="+res);
+               $http.post(link, {user_id: r, name: window.localStorage['user_name']})
+                .success(function(data){      
+                  $scope.tasks = data;
+               });
               }
               $state.go('tab.feed');
             });
@@ -118,8 +125,6 @@ angular.module('starter.controllers', [])
             //don't allow the user to close unless he enters wifi password
             e.preventDefault();
           } else {
-              // TODO skriv om POST delen
-              // http://www.codeproject.com/Articles/1005150/Posting-data-from-Ionic-app-to-PHP-server
               var link = "http://tolva.nu/insertPoops.php";
               $http.post(link, {user_id: window.localStorage['user_id'], type: type, rate: $scope.choice.value})
                 .success(function(data){      
