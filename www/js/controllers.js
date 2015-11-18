@@ -120,9 +120,14 @@ angular.module('starter.controllers', [])
           } else {
               // TODO skriv om POST delen
               // http://www.codeproject.com/Articles/1005150/Posting-data-from-Ionic-app-to-PHP-server
-              $http.post("http://tolva.nu/insertPoops.php?u="+window.localStorage['user_id']+"&t="+type+"&r="+$scope.choice.value).success(function(data){      
-            $scope.tasks = data;
-            });
+              var link = "http://tolva.nu/insertPoops.php";
+              $http.post(link, {user_id: window.localStorage['user_id'], type: type, rate: $scope.choice.value})
+                .success(function(data){      
+                  $scope.tasks = data;
+              });
+              //$http.post("http://tolva.nu/insertPoops.php?u="+window.localStorage['user_id']+"&t="+type+"&r="+$scope.choice.value).success(function(data){      
+              // $scope.tasks = data;
+              //});
           return $scope.choice.value;
           }
         }
