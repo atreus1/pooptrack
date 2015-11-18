@@ -18,11 +18,11 @@ angular.module('starter.controllers', [])
              }).then(function(res) {
               if(!res){
                 window.localStorage['user_name'] = "anon";
-                $http.post("http://userapan.myds.me/insertUser.php?u="+r+"&n=anon");
+                $http.post("http://tolva.nu/insertUser.php?u="+r+"&n=anon");
               }
               else{
                 window.localStorage['user_name'] = res;
-                $http.post("http://userapan.myds.me/insertUser.php?u="+r+"&n="+res);
+                $http.post("http://tolva.nu/insertUser.php?u="+r+"&n="+res);
               }
               $state.go('tab.feed');
             });
@@ -36,13 +36,13 @@ angular.module('starter.controllers', [])
   // TODO  uppdatera med local cache! så vi klarar oss utan internet
   // https://blog.nraboy.com/2014/06/saving-data-with-ionicframework/
   $scope.$on('$ionicView.beforeEnter', function() {
-    $http.get('http://userapan.myds.me/getFeed.php').success(function(data) {
+    $http.get('http://tolva.nu/getFeed.php').success(function(data) {
          $scope.feed = data;
       });
     });
     
      $scope.doRefresh = function() {
-      $http.get('http://userapan.myds.me/getFeed.php')
+      $http.get('http://tolva.nu/getFeed.php')
      .success(function(data) {
        $scope.feed = data;
      })
@@ -73,14 +73,15 @@ angular.module('starter.controllers', [])
 // })
 
 .controller('AddCtrl', function($scope, $http, $ionicPopup) {
-
-  // TODO  uppdatera med local cache! så vi klarar oss utan internet och den uppdateras en gång
-  // https://blog.nraboy.com/2014/06/saving-data-with-ionicframework/
-
-  $http.get('http://userapan.myds.me/getPoops.php').success(function(data) {
-         $scope.poops = data;
+  if(!window.localStorage['poops']) { 
+    $http.get('http://tolva.nu/getPoops.php')
+    .success(function(data) {
+         window.localStorage.setItem("poops", JSON.stringify(data));
      });
-
+  } 
+  
+  $scope.poops = JSON.parse(window.localStorage.getItem("poops"));
+  
   $scope.settings = {
     enableFriends: true
   };
@@ -111,7 +112,7 @@ angular.module('starter.controllers', [])
           } else {
               // TODO skriv om POST delen
               // http://www.codeproject.com/Articles/1005150/Posting-data-from-Ionic-app-to-PHP-server
-              $http.post("http://userapan.myds.me/insertPoops.php?u="+window.localStorage['user_id']+"&t="+type+"&r="+$scope.choice.value).success(function(data){      
+              $http.post("http://tolva.nu/insertPoops.php?u="+window.localStorage['user_id']+"&t="+type+"&r="+$scope.choice.value).success(function(data){      
             $scope.tasks = data;
             });
           return $scope.choice.value;
@@ -125,7 +126,7 @@ angular.module('starter.controllers', [])
 })
 
 .controller('FriendsCtrl', function($scope, $http) {
-$http.get('http://userapan.myds.me/getFriends.php').success(function(data) {
+$http.get('http://tolva.nu/getFriends.php').success(function(data) {
          $scope.users = data;
      });
 })
@@ -151,7 +152,7 @@ $scope.erase = function() {
     $scope.localName = window.localStorage['user_name'];
       // TODO skriv om GET delen
       // http://www.codeproject.com/Articles/1005150/Posting-data-from-Ionic-app-to-PHP-server
-      $http.get("http://userapan.myds.me/getProfile.php?u="+window.localStorage['user_id']).success(function(data) {
+      $http.get("http://tolva.nu/getProfile.php?u="+window.localStorage['user_id']).success(function(data) {
            $scope.profile = data;
         });
       });
