@@ -1,18 +1,11 @@
 <ion-view view-title="dumper">
   <ion-content padding="false" class="has-header">
-  <ion-item>{{localName}} #{{localId}}</ion-item>
-    <ion-list ng-repeat="p in profile">
-      <ion-item># of dumps - {{p.count}}</ion-item>
-      <ion-item class="item-thumbnail-left">
-        <img src='img/{{p.type}}.png'>
-        <h2>average dump</h2>
-        <p>{{p.type}}</p>
-      </ion-item>
-    </ion-list>
-    <button class="button button-assertive" ng-click="erase()">
+  <ion-item><i class="icon ion-person"></i> {{username}} alias "{{user_id}}"</ion-item>
+  <ion-item>Total number of dumps - {{countDumps}}</ion-item>
+<!--     <button class="button button-assertive" ng-click="erase()">
       erase user
-    </button>
-
+    </button> -->
+    <button class="button button-assertive button-block button-large" ng-click="logout()">Log out</button>
   </ion-content>
 
 <!--   <ion-content>

@@ -1,6 +1,6 @@
 var url = "http://userapan.myds.me/pooptrack_server/index.php";
 
-angular.module('starter.controllers', [])
+angular.module('starter.controllers', ['ngCordova'])
 
 .controller('MainCtrl', function($scope) {})
 
@@ -63,7 +63,7 @@ angular.module('starter.controllers', [])
         console.log("login complete");
 
         window.localStorage['user_id'] = sendData["user_id"];
-        window.localStorage['name'] = sendData["name"];
+        window.localStorage['name'] = data.user.name;
 
         $state.go('tab.feed');
       } else {
@@ -188,26 +188,93 @@ angular.module('starter.controllers', [])
   };
 })
 
-.controller('NearbyCtrl', function($scope) {
-  // With the new view caching in Ionic, Controllers are only called
-  // when they are recreated or on app start, instead of every page change.
-  // To listen for when this page is active (for example, to refresh data),
-  // listen for the $ionicView.enter event:
-  //
-  //$scope.$on('$ionicView.enter', function(e) {
-  //});
+.controller('NearbyCtrl', function($scope, $state, $cordovaGeolocation, $ionicLoading, $compile) {
 
-  // $scope.chats = Chats.all();
-  // $scope.remove = function(chat) {
-  //   Chats.remove(chat);
-  // };
+  $scope.init = function() {
+        var options = {timeout: 10000, enableHighAccuracy: true};
+        $cordovaGeolocation.getCurrentPosition(options).then(function(position) {
+          var myLatlng = new google.maps.LatLng(position.coords.latitude, position.coords.longitude);
+          var mapOptions = {
+            center: myLatlng,
+            zoom: 16,
+            mapTypeId: google.maps.MapTypeId.ROADMAP
+          };
+          var map = new google.maps.Map(document.getElementById("map"),
+            mapOptions);
+         
+        //Marker + infowindow + angularjs compiled ng-click
+        var contentString = "<div><a ng-click='clickTest()'>Click me!</a></div>";
+        var compiled = $compile(contentString)($scope);
+        var infowindow = new google.maps.InfoWindow({
+          content: compiled[0]
+        });
+
+        var feed = JSON.parse(window.localStorage['feed']);
+        var marker = [];
+
+        // console.log(feed[1]);
+
+        for(var i = 0; i < feed.length; i++) {
+          var tempPos = feed[i].location.split(",");
+          var pos = new google.maps.LatLng(tempPos[0], tempPos[1]);
+          marker[i] = new google.maps.Marker({
+            position: pos,
+            map: map,
+            title: "HEJ"
+          });
+
+          // google.maps.event.addListener(marker[i], 'click', function() {
+          //   infowindow.open(map,marker[i]);
+          //   console.log("hiora");
+          // });
+        }
+
+        // var marker = new google.maps.Marker({
+        //   position: myLatlng,
+        //   map: map,
+        //   title: 'asdas'
+        // });
+
+        // var myLatlng2 = new google.maps.LatLng(position.coords.latitude, "11.9690000");
+
+        // var marker2 = new google.maps.Marker({
+        //   position: myLatlng2,
+        //   map: map,
+        //   title: 'asdas'
+        // });        
+        // google.maps.event.addListener(marker, 'click', function() {
+        //   infowindow.open(map,marker);
+        // });
+        $scope.map = map;
+        }, function(error){
+          console.log("Could not get location");
+        });
+    };
+    // google.maps.event.addDomListener(window, 'load', initialize);
+    $scope.centerOnMe = function() {
+        if(!$scope.map) {
+            return;
+        }
+        $scope.loading = $ionicLoading.show({
+          content: 'Getting current location...',
+          showBackdrop: false
+        });
+        navigator.geolocation.getCurrentPosition(function(pos) {
+          $scope.map.setCenter(new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude));
+          $scope.loading.hide();
+        }, function(error) {
+          alert('Unable to get location: ' + error.message);
+        });
+    };
+    $scope.clickTest = function() {
+        alert('Example of infowindow with ng-click')
+    };
 })
-
 // .controller('ChatDetailCtrl', function($scope, $stateParams, Chats) {
 //   $scope.chat = Chats.get($stateParams.chatId);
 // })
 
-.controller('AddCtrl', function($scope, $http, $ionicPopup) {
+.controller('AddCtrl', function($scope, $http, $ionicPopup, $cordovaGeolocation) {
   $scope.$on('$ionicView.beforeEnter', function() {
       if(window.localStorage['poops'] == undefined) { 
         $http.get('http://tolva.nu/poop/getPoops.php')
@@ -231,6 +298,14 @@ angular.module('starter.controllers', [])
 
   $scope.add = function(type) {
     $scope.choice = {};
+    var lat = "";
+    var longi = "";
+
+    var options = {timeout: 10000, enableHighAccuracy: true};
+    $cordovaGeolocation.getCurrentPosition(options).then(function(position) {
+      lat = position.coords.latitude;
+      longi = position.coords.longitude;
+    });    
 
     var alertPopup = $ionicPopup.alert({
       title: 'poopy addy! rating',
@@ -253,6 +328,7 @@ angular.module('starter.controllers', [])
                 'tag': "addPoop",      
                 'user_id': window.localStorage['user_id'],
                 'type': type,
+                'location': lat+","+longi,
                 'rate': $scope.choice.value
               };
 
@@ -289,35 +365,81 @@ angular.module('starter.controllers', [])
 })
 
 .controller('FriendsCtrl', function($scope, $http) {
-$http.get('http://tolva.nu/poop/getFriends.php').success(function(data) {
-         $scope.users = data;
-     });
+// $http.get('http://tolva.nu/poop/getFriends.php').success(function(data) {
+         $scope.users = "data";
+     // });
 })
 
 .controller('ProfileCtrl', function($scope, $http, $ionicPopup, $state) {
+  $scope.user_id = window.localStorage['user_id'];
+  $scope.username = window.localStorage['name'];
 
-$scope.erase = function() {
-   var confirmPopup = $ionicPopup.confirm({
-     title: 'ggwp',
-     template: 'sql data will remain on server for purely scientific reasons'
-   });
-   confirmPopup.then(function(res) {
-     if(res) {
+  $scope.logout = function() {
+    var logoutPopup = $ionicPopup.confirm({
+      title: "Confirm logout",
+      okType: "button-assertive"
+    }).then(function(res) {
+      if (res){
+        console.log("logout");
         window.localStorage.clear();
-        $state.go('login');
-     } else {
-     }
-   });
- };
+        $state.go('login');        
+      }
+    });
+  };
 
-  $scope.$on('$ionicView.beforeEnter', function() {
-    $scope.localId = window.localStorage['user_id'];
-    $scope.localName = window.localStorage['user_name'];
-      // TODO skriv om GET delen
-      // http://www.codeproject.com/Articles/1005150/Posting-data-from-Ionic-app-to-PHP-server
-      $http.get("http://tolva.nu/poop/getProfile.php?u="+window.localStorage['user_id']).success(function(data) {
-           $scope.profile = data;
-        });
-      });
+  $scope.countDumps = function() {
+    var sendData = {
+      'tag': "countDumps",      
+      'user_id': window.localStorage['user_id']
+    };
 
+    console.log("HPIAHDGOIHG");
+
+    $http.post(url, sendData)
+    .success(function(data, status, headers, config) {
+      console.log(data);
+
+      if (data.success === 1) {
+        $scope.dumps = data.dumps;
+      } else {
+        console.log(data.error_msg);
+        var welcomePopup = $ionicPopup.alert({
+          title : "Error",
+          subTitle: data.error_msg
+        });        
+      }
+    })
+    .error(function(data, status, headers, config) {
+      console.log('error');
+    });    
+  };  
 });
+
+
+// .controller('ProfileCtrl', function($scope, $http, $ionicPopup, $state) {
+
+// $scope.erase = function() {
+//    var confirmPopup = $ionicPopup.confirm({
+//      title: 'ggwp',
+//      template: 'sql data will remain on server for purely scientific reasons'
+//    });
+//    confirmPopup.then(function(res) {
+//      if(res) {
+//         window.localStorage.clear();
+//         $state.go('login');
+//      } else {
+//      }
+//    });
+//  };
+
+//   $scope.$on('$ionicView.beforeEnter', function() {
+//     $scope.localId = window.localStorage['user_id'];
+//     $scope.localName = window.localStorage['user_name'];
+//       // TODO skriv om GET delen
+//       // http://www.codeproject.com/Articles/1005150/Posting-data-from-Ionic-app-to-PHP-server
+//       $http.get("http://tolva.nu/poop/getProfile.php?u="+window.localStorage['user_id']).success(function(data) {
+//            $scope.profile = data;
+//         });
+//       });
+
+// });
