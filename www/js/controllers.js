@@ -273,9 +273,30 @@ angular.module('starter.controllers', ['ngCordova'])
       template: desc
     });
   };
+})
 
-  $scope.add = function(type) {
-    $scope.choice = {};
+.controller('AddDetailCtrl', function($scope, $stateParams, $http, $state, $cordovaGeolocation) {
+  $scope.type = $stateParams.type;
+  var slidervalue;
+  $(function () {
+    $("#range").ionRangeSlider({
+            hide_min_max: true,
+            keyboard: false,
+            min: 1,
+            max: 6,
+            from: 3,
+            type: 'single',
+            step: 1,
+            onStart: function (data) {
+               slidervalue = data.from;
+            },
+            onFinish: function (data) {
+               slidervalue = data.from;
+            }
+      });
+    });
+    // Saving it's instance to var
+    var slider = $("#range").data("ionRangeSlider");
     var lat = "";
     var longi = "";
 
@@ -283,43 +304,15 @@ angular.module('starter.controllers', ['ngCordova'])
     $cordovaGeolocation.getCurrentPosition(options).then(function(position) {
       lat = position.coords.latitude;
       longi = position.coords.longitude;
-    });    
-
-    $("#range").ionRangeSlider({
-	    type: "simple",
-	    min: 1,
-	    max: 5,
-	    from: 3,
-	    grid: false
-	  });
-
-  	// Saving it's instance to var
-  	var slider = $("#range").data("ionRangeSlider");
-
-    var alertPopup = $ionicPopup.alert({
-      title: 'poopy addy! rating',
-      subTitle: 'Please use normal things',
-      template: '<ion-radio ng-model="choice.value" ng-value="1"><i class="icon icon ion-star"></i></ion-radio><ion-radio ng-model="choice.value" ng-value="2"><i class="icon icon ion-star"></i><i class="icon icon ion-star"></i></ion-radio><ion-radio ng-model="choice.value" ng-value="3"><i class="icon icon ion-star"></i><i class="icon icon ion-star"></i><i class="icon icon ion-star"></i></ion-radio>',
-      scope: $scope,
-      buttons: [
-        { 
-          text: 'Cancel'
-        },
-        {
-          text: '<b>Save</b>',
-          type: 'button-positive',
-          onTap: function(e) {
-            if (!$scope.choice.value) {
-              // don't allow the user to close unless he enters rating
-              e.preventDefault();
-            } else {
-              var sendData = {
+    }); 
+    $scope.add = function(type) {
+          var sendData = {
                 'tag': "addPoop",      
                 'user_id': window.localStorage['user_id'],
                 'type': type,
                 'location': lat+","+longi,
-                'rate': $scope.choice.value
-              };
+                'rate': slidervalue
+          };
 
               $http.post(url, sendData)
               .success(function(data, status, headers, config) {
@@ -338,19 +331,9 @@ angular.module('starter.controllers', ['ngCordova'])
               })
               .error(function(data, status, headers, config) {
                 console.log('error');
-              });              
-              return $scope.choice.value;
-            }
-          }
-        }
-      ]
-    });
-  };
-})
-
-.controller('AddDetailCtrl', function($scope, $stateParams, $http) {
-  $scope.penis = "penis";
-  $scope.type = $stateParams.type;
+              }); 
+              $state.go('tab.feed'); 
+    };
 })
 
 .controller('FriendsCtrl', function($scope, $http) {
@@ -363,8 +346,6 @@ angular.module('starter.controllers', ['ngCordova'])
   $scope.$on('$ionicView.enter', function() {
     $scope.user_id = window.localStorage['user_id'];
     $scope.username = window.localStorage['name'];
-
-    console.log("hiooioiraioriaoira");
 
     $scope.logout = function() {
       var logoutPopup = $ionicPopup.confirm({

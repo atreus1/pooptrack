@@ -5800,8 +5800,8 @@ ion-tabs.tabs-color-active-dark .tab-item {
   position: relative;
   z-index: 2;
   display: block;
-  margin: 0px 0px 8px 0px;
-  box-shadow: 2px 2px 12px rgba(216, 216, 216, 0.40);
+  margin: 0px 0px 6px 0px;
+  box-shadow: 2px 2px 12px rgba(216, 216, 216, 0.30);
   padding: 14px;
   border-width: 0px;
   border-style: none;
@@ -6598,9 +6598,9 @@ button.item.item-button-right {
  */
 .list {
   position: relative;
-  padding-top: 1px;
+  padding-top: 5px;
   padding-bottom: 1px;
-  padding-left: 0;
+  padding-left: 5px;
   margin-bottom: 20px; }
 
 .list:last-child {
