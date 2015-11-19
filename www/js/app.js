@@ -70,15 +70,6 @@ angular.module('starter', ['ionic', 'starter.controllers', 'starter.services'])
         }
       }
   })
-    // .state('tab.chat-detail', {
-    //   url: '/chats/:chatId',
-    //   views: {
-    //     'tab-chats': {
-    //       templateUrl: 'templates/chat-detail.html',
-    //       controller: 'ChatDetailCtrl'
-    //     }
-    //   }
-    // })
 
   .state('tab.add', {
     url: '/add',
@@ -89,6 +80,16 @@ angular.module('starter', ['ionic', 'starter.controllers', 'starter.services'])
       }
     }
   })
+
+  .state('tab.add-detail', {
+    url: '/add/:type',
+    views: {
+      'tab-add': {
+        templateUrl: 'templates/tab-add-detail.html',
+        controller: 'AddDetailCtrl'
+      }
+    }
+  })  
 
   .state('tab.friends', {
     url: '/friends',
