@@ -4,43 +4,6 @@ angular.module('starter.controllers', ['ngCordova'])
 
 .controller('MainCtrl', function($scope) {})
 
-// .controller('LoginCtrl', function($scope, LoginService, $ionicPopup, $state, $http) {
-//   // TODO skriv om POST delen
-//   // http://www.codeproject.com/Articles/1005150/Posting-data-from-Ionic-app-to-PHP-server
-//   if(!window.localStorage['user_id']) {
-//          var d = new Date();
-//          var n = d.getTime();
-//          var r = Math.floor((Math.random() * n) / 1000000);
-//          window.localStorage['user_id'] = r;
-//              var welcomePopup = $ionicPopup.prompt({
-//               title : 'welcome dumper! yes',
-//               subTitle: 'you have been assigned the wounderfull user_id of #' + r,
-//               inputType: 'text',
-//               inputPlaceholder: 'your username .. press cancel anon',
-//              }).then(function(res) {
-//               var link = "http://tolva.nu/poop/insertUser.php";
-//               if(!res){
-//                 window.localStorage['user_name'] = "anon";
-//               $http.post(link, {user_id: r, name: window.localStorage['user_name']})
-//                 .success(function(data){      
-//                   $scope.tasks = data;
-//               });
-//               }
-//               else{
-//                 window.localStorage['user_name'] = res;
-//                $http.post(link, {user_id: r, name: window.localStorage['user_name']})
-//                 .success(function(data){      
-//                   $scope.tasks = data;
-//                });
-//               }
-//               $state.go('tab.feed');
-//             });
-//   }
-//   else {
-//     $state.go('tab.feed');
-//   }
-// })
-
 .controller('LoginCtrl', function($scope, $http, $ionicPopup,  $state) {
   
   if(window.localStorage['user_id']) {
@@ -189,13 +152,7 @@ angular.module('starter.controllers', ['ngCordova'])
 })
 
 .controller('NearbyCtrl', function($scope, $state, $http, $cordovaGeolocation, $ionicLoading, $compile) {
-	
-
-
-
-
-  	$scope.$on('$ionicView.beforeEnter', function() {
-
+	  $scope.$on('$ionicView.beforeEnter', function() {
 	    var sendData = {
 	      'tag': "getFeed",      
 	      'user_id': window.localStorage['user_id']
@@ -228,7 +185,7 @@ angular.module('starter.controllers', ['ngCordova'])
           var myLatlng = new google.maps.LatLng(position.coords.latitude, position.coords.longitude);
           var mapOptions = {
             center: myLatlng,
-            zoom: 16,
+            zoom: 15,
             mapTypeId: google.maps.MapTypeId.ROADMAP
           };
           var map = new google.maps.Map(document.getElementById("map"),
@@ -237,14 +194,10 @@ angular.module('starter.controllers', ['ngCordova'])
         //Marker + infowindow + angularjs compiled ng-click
         var contentString = "<div><a ng-click='clickTest()'>Click me!</a></div>";
         var compiled = $compile(contentString)($scope);
-        var infowindow = new google.maps.InfoWindow({
-          content: compiled[0]
-        });
 
         var feed = JSON.parse(window.localStorage['feed']);
         var marker = [];
-
-        // console.log(feed[1]);
+        var infowindow = [];
 
         for(var i = 0; i < feed.length; i++) {
           var tempPos = feed[i].location.split(",");
@@ -255,28 +208,16 @@ angular.module('starter.controllers', ['ngCordova'])
             title: feed[i].name
           });
 
-          // google.maps.event.addListener(marker[i], 'click', function() {
-          //   infowindow.open(map,marker[i]);
-          //   console.log("hiora");
-          // });
+          infowindow[i] = new google.maps.InfoWindow({
+          	position: pos,
+          	content: compiled[0]
+          });
+
+          google.maps.event.addListener(marker[i], 'click', function() {
+            infowindow[i].open(map,marker[i]);
+          });
         }
-
-        // var marker = new google.maps.Marker({
-        //   position: myLatlng,
-        //   map: map,
-        //   title: 'asdas'
-        // });
-
-        // var myLatlng2 = new google.maps.LatLng(position.coords.latitude, "11.9690000");
-
-        // var marker2 = new google.maps.Marker({
-        //   position: myLatlng2,
-        //   map: map,
-        //   title: 'asdas'
-        // });        
-        // google.maps.event.addListener(marker, 'click', function() {
-        //   infowindow.open(map,marker);
-        // });
+     
         $scope.map = map;
         }, function(error){
           console.log("Could not get location");
@@ -299,7 +240,7 @@ angular.module('starter.controllers', ['ngCordova'])
 	        });
 	    };
 	    $scope.clickTest = function() {
-	        alert('Example of infowindow with ng-click')
+	        alert('asdasd')
 	    };
 	});
 })
@@ -307,7 +248,7 @@ angular.module('starter.controllers', ['ngCordova'])
 //   $scope.chat = Chats.get($stateParams.chatId);
 // })
 
-.controller('AddCtrl', function($scope, $http, $ionicPopup, $cordovaGeolocation) {
+.controller('AddCtrl', function($scope, $http, $ionicPopup, $cordovaGeolocation, $state) {
   $scope.$on('$ionicView.beforeEnter', function() {
       if(window.localStorage['poops'] == undefined) { 
         $http.get('http://tolva.nu/poop/getPoops.php')
@@ -340,10 +281,21 @@ angular.module('starter.controllers', ['ngCordova'])
       longi = position.coords.longitude;
     });    
 
+    $("#range").ionRangeSlider({
+	    type: "simple",
+	    min: 1,
+	    max: 5,
+	    from: 3,
+	    grid: false
+	});
+
+	// Saving it's instance to var
+	var slider = $("#range").data("ionRangeSlider");
+
     var alertPopup = $ionicPopup.alert({
       title: 'poopy addy! rating',
       subTitle: 'Please use normal things',
-      template: '<ion-radio ng-model="choice.value" ng-value="1"><i class="icon icon ion-star"></i></ion-radio><ion-radio ng-model="choice.value" ng-value="2"><i class="icon icon ion-star"></i><i class="icon icon ion-star"></i></ion-radio><ion-radio ng-model="choice.value" ng-value="3"><i class="icon icon ion-star"></i><i class="icon icon ion-star"></i><i class="icon icon ion-star"></i></ion-radio>',
+      template: '<input type="text" id="range" name="range" />',
       scope: $scope,
       buttons: [
         { 
