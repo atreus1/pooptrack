@@ -1,12 +1,15 @@
 <ion-view view-title="add-detail">
   <ion-content padding="false" class="has-header">
     <ion-list>
-    <div class="item range range-royal">
-    <i class="icon ion-ios-star-outline"></i>
-    <input type="range" name="rate" min="0" max="100" value="50" ng-model="slider.rangeValue">
-    <i class="icon ion-ios-star"></i>
-  </div>
-	<button class="button button-positive button-block button-large" ng-click="add(type)">+ add</button>
+      <div class="item range range-royal">
+        <i class="icon ion-ios-star-outline"></i>
+        <input type="range" name="rate" min="0" max="100" ng-model="add.rangeValue">
+        <i class="icon ion-ios-star"></i>
+      </div>
+      <textarea name="comment" id="comment-textarea" 
+        ng-model="add.comment" placeholder="Describe your feeling about this crap" rows="4" style="width:100%; resize:none; padding: 15px;">
+      </textarea>
+      <button class="button button-positive button-block button-large" ng-click="add(type)">+ add</button>
     </ion-list>
   </ion-content>
 </ion-view>

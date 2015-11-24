@@ -4,7 +4,7 @@ angular.module('starter.controllers', ['ngCordova'])
 
 .controller('MainCtrl', function($scope) {})
 
-.controller('LoginCtrl', function($scope, $http, $ionicPopup,  $state) {
+.controller('LoginCtrl', function($scope, $http, $ionicPopup, $state) {
   
   if(window.localStorage['user_id']) {
     $state.go('tab.feed');
@@ -275,7 +275,7 @@ angular.module('starter.controllers', ['ngCordova'])
   };
 })
 
-.controller('AddDetailCtrl', function($scope, $stateParams, $http, $state, $cordovaGeolocation) {
+.controller('AddDetailCtrl', function($scope, $stateParams, $http, $state, $cordovaGeolocation, $ionicHistory) {
   $scope.type = $stateParams.type;
   var lat = "";
   var longi = "";
@@ -286,47 +286,55 @@ angular.module('starter.controllers', ['ngCordova'])
     longi = position.coords.longitude;
   });
     
-    $scope.slider = {};
-    $scope.slider.rangeValue = 0;
-    
-    $scope.$watch('slider.rangeValue',function(val,old){
-       $scope.slider.rangeValue = parseInt(val);
-       console.log('range=' + $scope.slider.rangeValue)
-    });
-    
-    $scope.rangeFilter = function(number) {
-        return (number.value > $scope.slider.rangeValue);
-    }
+  $scope.add = {};
+  $scope.add.rangeValue = 40;
+  $scope.add.comment = "";
+  
+  $scope.$watch('add.rangeValue',function(val,old){
+     $scope.add.rangeValue = parseInt(val);
+  });
+  
+  $scope.rangeFilter = function(number) {
+      return (number.value > $scope.add.rangeValue);
+  }
 
   $scope.add = function(type) {
-          var sendData = {
-                'tag': "addPoop",      
-                'user_id': window.localStorage['user_id'],
-                'type': type,
-                'location': lat+","+longi,
-                'rate': slidervalue
-          };
-
-              $http.post(url, sendData)
-              .success(function(data, status, headers, config) {
-                console.log(data);
-
-                if (data.success === 1) {
-                  console.log("added new poop post");
-
-                } else {
-                  console.log(data.error_msg);
-                  var welcomePopup = $ionicPopup.alert({
-                    title : "Error",
-                    subTitle: data.error_msg
-                  });        
-                }
-              })
-              .error(function(data, status, headers, config) {
-                console.log('error');
-              }); 
-              $state.go('tab.feed'); 
+    var sendData = {
+          'tag': "addPoop",      
+          'user_id': window.localStorage['user_id'],
+          'type': type,
+          'comment': $scope.add.comment,
+          'location': lat+","+longi,
+          'rate': $scope.add.rangeValue
     };
+
+    $http.post(url, sendData)
+    .success(function(data, status, headers, config) {
+      console.log(data);
+
+      if (data.success === 1) {
+        console.log("added new poop post");
+
+      } else {
+        console.log(data.error_msg);
+        var welcomePopup = $ionicPopup.alert({
+          title : "Error",
+          subTitle: data.error_msg
+        });        
+      }
+    })
+    .error(function(data, status, headers, config) {
+      console.log('error');
+    }); 
+
+    $ionicHistory.goBack();
+
+    setTimeout(function(){
+      $state.go('tab.feed');
+    }, 100);
+    
+
+  };
 })
 
 .controller('FriendsCtrl', function($scope, $http) {
