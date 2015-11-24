@@ -1,14 +1,11 @@
 <ion-view view-title="add-detail">
   <ion-content padding="false" class="has-header">
     <ion-list>
-    <br />
-    <center><small>Rate <b>1</b> (the worst thing ever) - Rate <b>5</b> (never felt better)</small>
-    <input type="text" id="range" value="" name="range" /></center>
-	<div class="list list-inset">
-  		<label class="item item-input">
-   		<input type="text" placeholder="comments .." ng-model="type.comment">
-  		</label>
-	</div>
+    <div class="item range range-royal">
+    <i class="icon ion-ios-star-outline"></i>
+    <input type="range" name="rate" min="0" max="100" value="50" ng-model="slider.rangeValue">
+    <i class="icon ion-ios-star"></i>
+  </div>
 	<button class="button button-positive button-block button-large" ng-click="add(type)">+ add</button>
     </ion-list>
   </ion-content>

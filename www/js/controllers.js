@@ -277,35 +277,28 @@ angular.module('starter.controllers', ['ngCordova'])
 
 .controller('AddDetailCtrl', function($scope, $stateParams, $http, $state, $cordovaGeolocation) {
   $scope.type = $stateParams.type;
-  var slidervalue;
-  $(function () {
-    $("#range").ionRangeSlider({
-            hide_min_max: true,
-            keyboard: false,
-            min: 1,
-            max: 6,
-            from: 3,
-            type: 'single',
-            step: 1,
-            onStart: function (data) {
-               slidervalue = data.from;
-            },
-            onFinish: function (data) {
-               slidervalue = data.from;
-            }
-      });
+  var lat = "";
+  var longi = "";
+  var timeoutId = null;
+  var options = {timeout: 10000, enableHighAccuracy: true};
+  $cordovaGeolocation.getCurrentPosition(options).then(function(position) {
+    lat = position.coords.latitude;
+    longi = position.coords.longitude;
+  });
+    
+    $scope.slider = {};
+    $scope.slider.rangeValue = 0;
+    
+    $scope.$watch('slider.rangeValue',function(val,old){
+       $scope.slider.rangeValue = parseInt(val);
+       console.log('range=' + $scope.slider.rangeValue)
     });
-    // Saving it's instance to var
-    var slider = $("#range").data("ionRangeSlider");
-    var lat = "";
-    var longi = "";
+    
+    $scope.rangeFilter = function(number) {
+        return (number.value > $scope.slider.rangeValue);
+    }
 
-    var options = {timeout: 10000, enableHighAccuracy: true};
-    $cordovaGeolocation.getCurrentPosition(options).then(function(position) {
-      lat = position.coords.latitude;
-      longi = position.coords.longitude;
-    }); 
-    $scope.add = function(type) {
+  $scope.add = function(type) {
           var sendData = {
                 'tag': "addPoop",      
                 'user_id': window.localStorage['user_id'],

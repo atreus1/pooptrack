@@ -6335,12 +6335,12 @@ button.item.item-button-right {
   .item-thumbnail-left .item-content > img:first-child,
   .item-thumbnail-left .item-content .item-image {
     position: absolute;
-    top: 10px;
+    top: 15%;
     left: 10px;
     max-width: 80px;
     max-height: 80px;
     width: 100%;
-    height: 100%; }
+    vertical-align: middle; }
 
 .item-avatar.item-complex,
 .item-avatar-left.item-complex,
@@ -8924,7 +8924,7 @@ a.button {
  * --------------------------------------------------
  */
 .padding {
-  padding: 10px; }
+  padding: 0px; }
 
 .padding-top,
 .padding-vertical {

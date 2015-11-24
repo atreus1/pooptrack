@@ -6,7 +6,7 @@
       <ion-item ng-repeat="f in feed" class="item-thumbnail-left">
         <img src="img/{{f.type}}.png">
         <h2>{{f.name}}</h2>
-        <p>{{f.date}}<br/> {{f.rate}}<br/> {{f.event_id}}</p>
+        <p><i class="ion-ios-clock-outline"></i>  {{f.date}}<br/>{{f.rate}} <i class="ion-ios-star-outline"></i><i class="ion-ios-star-half"></i><i class="ion-ios-star"></i> <i class="ion-ios-pricetag-outline"></i> {{f.event_id}}</p>
       </ion-item>
     </ion-list>
   </ion-content>
