@@ -7,8 +7,10 @@
       </label>
     </form>
     <ion-list>
-      <ion-item ng-repeat="u in users">
-        <p>{{u.name}}</p>
+      <ion-item ng-repeat="u in users" can-swipe="listCanSwipe">
+        <p style="float:left;">{{u.user_id}}</p>
+        <i class="ion-chevron-left" style="float:right;"></i>
+        <ion-option-button class="button-balanced" ng-click="addFriend(u)">Add friend</ion-option-button>
       </ion-item>
     </ion-list>
   </ion-content>
