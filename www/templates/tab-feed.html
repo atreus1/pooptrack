@@ -1,8 +1,13 @@
 <ion-view view-title="feed">
+  <ion-nav-buttons side="left">
+    <button class="button button-icon button-clear ion-earth"></button>
+  </ion-nav-buttons>
+  <ion-nav-buttons side="right">
+    <button class="button button-icon button-clear ion-ios-people"></button>
+  </ion-nav-buttons>
   <ion-content padding="true" class="has-header">
-   <ion-refresher pulling-text="Pull to refresh..." on-refresh="doRefresh()">
-  </ion-refresher>
-   <ion-list >
+    <ion-refresher pulling-text="Pull to refresh..." on-refresh="doRefresh()"></ion-refresher> 
+    <ion-list>
       <ion-item ng-repeat="f in feed" class="item-thumbnail-left">
         <img src="img/{{f.type}}.png">
         <h2>{{f.name}}</h2>

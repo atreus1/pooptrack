@@ -92,10 +92,15 @@ angular.module('starter.controllers', ['ngCordova'])
   // https://blog.nraboy.com/2014/06/saving-data-with-ionicframework/
   $scope.$on('$ionicView.beforeEnter', function() {
 
+    // var sendData = {
+    //   'tag': "getFeed",      
+    //   'user_id': window.localStorage['user_id']
+    // };
+
     var sendData = {
-      'tag': "getFeed",      
+      'tag': "getFriendFeed",      
       'user_id': window.localStorage['user_id']
-    };
+    };    
 
     $http.post(url, sendData)
     .success(function(data, status, headers, config) {
@@ -182,12 +187,12 @@ angular.module('starter.controllers', ['ngCordova'])
     var options = {timeout: 10000, enableHighAccuracy: true};
     $cordovaGeolocation.getCurrentPosition(options).then(
       function(position) {
-        var myLatlng = new google.maps.LatLng(position.coords.latitude, position.coords.longitude);
+      	var myLatlng = new google.maps.LatLng(position.coords.latitude, position.coords.longitude);
         var mapOptions = {
-          center: myLatlng,
-          zoom: 15,
-					disableDefaultUI: true,
-          mapTypeId: google.maps.MapTypeId.ROADMAP
+          	center: myLatlng,
+          	zoom: 15,
+			disableDefaultUI: true,
+          	mapTypeId: google.maps.MapTypeId.ROADMAP
         };
         var map = new google.maps.Map(document.getElementById("map"),mapOptions);
        
@@ -200,25 +205,25 @@ angular.module('starter.controllers', ['ngCordova'])
           var marker = [];
           var infowindow = [];
 
-          for(var i = 0; i < feed.length; i++) {
-            var tempPos = feed[i].location.split(",");
-            var pos = new google.maps.LatLng(tempPos[0], tempPos[1]);
-            marker[i] = new google.maps.Marker({
-              position: pos,
-              map: map,
-              title: feed[i].name
-            });
+			for(var i = 0; i < feed.length; i++) {
+				var tempPos = feed[i].location.split(",");
+				var pos = new google.maps.LatLng(tempPos[0], tempPos[1]);
+				marker[i] = new google.maps.Marker({
+				  position: pos,
+				  map: map,
+				  title: feed[i].name
+				});
 
-          // infowindow[i] = new google.maps.InfoWindow({
-          // 	position: pos,
-          // 	content: compiled[0]
-          // });
+				// infowindow[i] = new google.maps.InfoWindow({
+				// 	position: pos,
+				// 	content: compiled[0]
+				// });
 
-          // google.maps.event.addListener(marker[i], 'click', function() {
-          //   console.log("fittskalle "+i);
-          //   infowindow[i].open(map,marker[0]);
-          // });
-          }
+				// google.maps.event.addListener(marker[i], 'click', function() {
+				//   console.log("fittskalle "+i);
+				//   infowindow[i].open(map,marker[0]);
+				// });
+			}
           $scope.map = map;
         } else {
           console.log("No feed to display on map yet!");
@@ -339,6 +344,9 @@ angular.module('starter.controllers', ['ngCordova'])
 })
 
 .controller('FriendsCtrl', function($scope, $http, $ionicPopup) {
+    $scope.searchField = {};
+    $scope.searchField.query = "";
+
     var sendData = {
       'tag': "getAllUsers",
       'user_id': window.localStorage['user_id'],
@@ -391,6 +399,28 @@ angular.module('starter.controllers', ['ngCordova'])
       .error(function(data, status, headers, config) {
         console.log('error');
       });      
+    }
+
+    $scope.doSearch = function() {
+      console.log("do search");
+      // var sendData = {
+      //   'tag': "search",
+      //   'query': $scope.searchField.query
+      // };
+
+      // $http.post(url, sendData)
+      // .success(function(data, status, headers, config) {
+      //   console.log(data);
+
+      //   if (data.success === 1) {
+
+      //   } else {
+      //     console.log(data.error_msg);
+      //   }
+      // })
+      // .error(function(data, status, headers, config) {
+      //   console.log('error');
+      // });
     }
 })
 
