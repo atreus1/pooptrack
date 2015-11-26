@@ -3,10 +3,11 @@
     <form class="list">
       <label class="item item-input">
         <i class="icon ion-search placeholder-icon"></i>
-        <input type="search" onsearch="doSearch()" ng-model="searchField.query">
+          <input type="search" ng-enter="doSearch()" ng-model="searchField.query">
       </label>
-    </form>
-    <ion-list>
+    </form>    
+    <ion-list> 
+      <ion-item><p>{{info}}</p></ion-item>     
       <ion-item ng-repeat="u in users" can-swipe="listCanSwipe">
         <p style="float:left;">{{u.user_id}}</p>
         <i class="ion-chevron-left" style="float:right;"></i>

@@ -189,10 +189,10 @@ angular.module('starter.controllers', ['ngCordova'])
       function(position) {
       	var myLatlng = new google.maps.LatLng(position.coords.latitude, position.coords.longitude);
         var mapOptions = {
-          	center: myLatlng,
-          	zoom: 15,
-			disableDefaultUI: true,
-          	mapTypeId: google.maps.MapTypeId.ROADMAP
+          center: myLatlng,
+          zoom: 15,
+          disableDefaultUI: true,
+          mapTypeId: google.maps.MapTypeId.ROADMAP
         };
         var map = new google.maps.Map(document.getElementById("map"),mapOptions);
        
@@ -205,25 +205,25 @@ angular.module('starter.controllers', ['ngCordova'])
           var marker = [];
           var infowindow = [];
 
-			for(var i = 0; i < feed.length; i++) {
-				var tempPos = feed[i].location.split(",");
-				var pos = new google.maps.LatLng(tempPos[0], tempPos[1]);
-				marker[i] = new google.maps.Marker({
-				  position: pos,
-				  map: map,
-				  title: feed[i].name
-				});
+    			for(var i = 0; i < feed.length; i++) {
+    				var tempPos = feed[i].location.split(",");
+    				var pos = new google.maps.LatLng(tempPos[0], tempPos[1]);
+    				marker[i] = new google.maps.Marker({
+    				  position: pos,
+    				  map: map,
+    				  title: feed[i].name
+    				});
 
-				// infowindow[i] = new google.maps.InfoWindow({
-				// 	position: pos,
-				// 	content: compiled[0]
-				// });
+    				// infowindow[i] = new google.maps.InfoWindow({
+    				// 	position: pos,
+    				// 	content: compiled[0]
+    				// });
 
-				// google.maps.event.addListener(marker[i], 'click', function() {
-				//   console.log("fittskalle "+i);
-				//   infowindow[i].open(map,marker[0]);
-				// });
-			}
+    				// google.maps.event.addListener(marker[i], 'click', function() {
+    				//   console.log("fittskalle "+i);
+    				//   infowindow[i].open(map,marker[0]);
+    				// });
+    			}
           $scope.map = map;
         } else {
           console.log("No feed to display on map yet!");
@@ -347,28 +347,54 @@ angular.module('starter.controllers', ['ngCordova'])
     $scope.searchField = {};
     $scope.searchField.query = "";
 
-    var sendData = {
-      'tag': "getAllUsers",
-      'user_id': window.localStorage['user_id'],
-    };
+    $scope.info = "No users to display. Try search for one!";
 
-    $http.post(url, sendData)
-    .success(function(data, status, headers, config) {
-      console.log(data);
+    $scope.doSearch = function() {
+      console.log($scope.searchField.query);
 
-      if (data.success === 1) {
-        $scope.users = data.users;
-      } else {
-        console.log(data.error_msg);
-        // var welcomePopup = $ionicPopup.alert({
-        //   title : "Error",
-        //   subTitle: data.error_msg
-        // });        
-      }
-    })
-    .error(function(data, status, headers, config) {
-      console.log('error');
-    });
+      var sendData = {
+        'tag': "searchFriends",
+        'query': $scope.searchField.query,
+      };
+
+      $http.post(url, sendData)
+      .success(function(data, status, headers, config) {
+        console.log(data);
+
+        if (data.success === 1) {
+          $scope.users = data.user;
+        } else {
+          console.log(data.error_msg);
+     
+        }
+      })
+      .error(function(data, status, headers, config) {
+        console.log('error');
+      });      
+    };    
+
+    // var sendData = {
+    //   'tag': "getAllUsers",
+    //   'user_id': window.localStorage['user_id'],
+    // };
+
+    // $http.post(url, sendData)
+    // .success(function(data, status, headers, config) {
+    //   console.log(data);
+
+    //   if (data.success === 1) {
+    //     $scope.users = data.users;
+    //   } else {
+    //     console.log(data.error_msg);
+    //     // var welcomePopup = $ionicPopup.alert({
+    //     //   title : "Error",
+    //     //   subTitle: data.error_msg
+    //     // });        
+    //   }
+    // })
+    // .error(function(data, status, headers, config) {
+    //   console.log('error');
+    // });    
 
     $scope.addFriend = function(friend) {
       console.log(friend.user_id);
@@ -399,29 +425,7 @@ angular.module('starter.controllers', ['ngCordova'])
       .error(function(data, status, headers, config) {
         console.log('error');
       });      
-    }
-
-    $scope.doSearch = function() {
-      console.log("do search");
-      // var sendData = {
-      //   'tag': "search",
-      //   'query': $scope.searchField.query
-      // };
-
-      // $http.post(url, sendData)
-      // .success(function(data, status, headers, config) {
-      //   console.log(data);
-
-      //   if (data.success === 1) {
-
-      //   } else {
-      //     console.log(data.error_msg);
-      //   }
-      // })
-      // .error(function(data, status, headers, config) {
-      //   console.log('error');
-      // });
-    }
+    };
 })
 
 .controller('ProfileCtrl', function($scope, $http, $ionicPopup, $state) {
@@ -467,4 +471,17 @@ angular.module('starter.controllers', ['ngCordova'])
 
     $scope.countDumps();
   });  
+})
+
+.directive('ngEnter', function() {
+  return function(scope, element, attrs) {
+    element.bind("keydown keypress", function(event) {
+      if(event.which === 13) {
+        scope.$apply(function(){
+          scope.$eval(attrs.ngEnter);
+        });
+        event.preventDefault();
+      }
+    });
+  };
 });
