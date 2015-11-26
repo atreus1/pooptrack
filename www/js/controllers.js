@@ -88,17 +88,16 @@ angular.module('starter.controllers', ['ngCordova'])
 })
 
 .controller('FeedCtrl', function($scope, $http, $ionicPopup) {
-  // TODO  uppdatera med local cache! så vi klarar oss utan internet
-  // https://blog.nraboy.com/2014/06/saving-data-with-ionicframework/
+  
+  var tag = 'getFeed';
+  $scope.setFeed = function(input) {
+      tag = input;
+      $scope.doRefresh();
+  };
+
   $scope.$on('$ionicView.beforeEnter', function() {
-
-    // var sendData = {
-    //   'tag': "getFeed",      
-    //   'user_id': window.localStorage['user_id']
-    // };
-
     var sendData = {
-      'tag': "getFriendFeed",      
+      'tag': tag,    
       'user_id': window.localStorage['user_id']
     };    
 
@@ -108,10 +107,8 @@ angular.module('starter.controllers', ['ngCordova'])
 
       if (data.success === 1) {
         console.log("getting feed :)");
-
         $scope.feed = data.feed;
         window.localStorage.setItem("feed", JSON.stringify(data.feed));
-
       } else {
         console.log(data.error_msg);        
       }
@@ -123,20 +120,17 @@ angular.module('starter.controllers', ['ngCordova'])
     
   $scope.doRefresh = function() {
     var sendData = {
-      'tag': "getFeed",      
+      'tag': tag,      
       'user_id': window.localStorage['user_id']
     };
 
     $http.post(url, sendData)
     .success(function(data, status, headers, config) {
       console.log(data);
-
       if (data.success === 1) {
         console.log("getting feed refresh");
-
         $scope.feed = data.feed;
         window.localStorage.setItem("feed", JSON.stringify(data.feed));
-
       } else {
         console.log(data.error_msg);
         var welcomePopup = $ionicPopup.alert({
@@ -161,23 +155,15 @@ angular.module('starter.controllers', ['ngCordova'])
       'tag': "getFeed",      
       'user_id': window.localStorage['user_id']
     };
-
     $http.post(url, sendData)
     .success(function(data, status, headers, config) {
       console.log(data);
-
       if (data.success === 1) {
         console.log("getting feed :)");
-
         $scope.feed = data.feed;
         window.localStorage.setItem("feed", JSON.stringify(data.feed));
-
       } else {
-        console.log(data.error_msg);
-        // var welcomePopup = $ionicPopup.alert({
-        //   title : "Could not get feed",
-        //   subTitle: data.error_msg
-        // });        
+        console.log(data.error_msg);   
       }
     })
     .error(function(data, status, headers, config) {
