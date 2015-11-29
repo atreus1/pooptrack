@@ -89,64 +89,72 @@ angular.module('starter.controllers', ['ngCordova'])
 
 .controller('FeedCtrl', function($scope, $http, $ionicPopup) {
   
-  var tag = 'getFeed';
-  $scope.setFeed = function(input) {
-      tag = input;
-      $scope.doRefresh();
-  };
+  // var tag = 'getFeed';
+  // $scope.setFeed = function(input) {
+  //     tag = input;
+  //     $scope.doRefresh();
+  // };
 
-  $scope.$on('$ionicView.beforeEnter', function() {
-    var sendData = {
-      'tag': tag,    
-      'user_id': window.localStorage['user_id']
-    };    
+  // $scope.$on('$ionicView.beforeEnter', function() {
+  //   var sendData = {
+  //     'tag': tag,    
+  //     'user_id': window.localStorage['user_id']
+  //   };    
 
-    $http.post(url, sendData)
-    .success(function(data, status, headers, config) {
-      console.log(data);
+  //   $http.post(url, sendData)
+  //   .success(function(data, status, headers, config) {
+  //     console.log(data);
 
-      if (data.success === 1) {
-        console.log("getting feed :)");
-        $scope.feed = data.feed;
-        window.localStorage.setItem("feed", JSON.stringify(data.feed));
-      } else {
-        console.log(data.error_msg);        
-      }
-    })
-    .error(function(data, status, headers, config) {
-      console.log('error');
-    });
-  });
+  //     if (data.success === 1) {
+  //       console.log("getting feed :)");
+  //       $scope.feed = data.feed;
+  //       window.localStorage.setItem("feed", JSON.stringify(data.feed));
+  //     } else {
+  //       console.log(data.error_msg);        
+  //     }
+  //   })
+  //   .error(function(data, status, headers, config) {
+  //     console.log('error');
+  //   });
+  // });
     
-  $scope.doRefresh = function() {
-    var sendData = {
-      'tag': tag,      
-      'user_id': window.localStorage['user_id']
-    };
+  // $scope.doRefresh = function() {
+  //   var sendData = {
+  //     'tag': tag,      
+  //     'user_id': window.localStorage['user_id']
+  //   };
 
-    $http.post(url, sendData)
-    .success(function(data, status, headers, config) {
-      console.log(data);
-      if (data.success === 1) {
-        console.log("getting feed refresh");
-        $scope.feed = data.feed;
-        window.localStorage.setItem("feed", JSON.stringify(data.feed));
-      } else {
-        console.log(data.error_msg);
-        var welcomePopup = $ionicPopup.alert({
-          title : "Could not get feed",
-          subTitle: data.error_msg
-        });        
-      }
-    })
-    .error(function(data, status, headers, config) {
-      console.log('error');
-    })
-    .finally(function() {
-      // Stop the ion-refresher from spinning
-      $scope.$broadcast('scroll.refreshComplete');
-    });
-  };
+  //   $http.post(url, sendData)
+  //   .success(function(data, status, headers, config) {
+  //     console.log(data);
+  //     if (data.success === 1) {
+  //       console.log("getting feed refresh");
+  //       $scope.feed = data.feed;
+  //       window.localStorage.setItem("feed", JSON.stringify(data.feed));
+  //     } else {
+  //       console.log(data.error_msg);
+  //       var welcomePopup = $ionicPopup.alert({
+  //         title : "Could not get feed",
+  //         subTitle: data.error_msg
+  //       });        
+  //     }
+  //   })
+  //   .error(function(data, status, headers, config) {
+  //     console.log('error');
+  //   })
+  //   .finally(function() {
+  //     // Stop the ion-refresher from spinning
+  //     $scope.$broadcast('scroll.refreshComplete');
+  //   });
+  // };
+})
+
+.controller('GlobalFeedCtrl', function($scope, $http, $ionicPopup) {
+  $scope.hello = "global feed";
+})
+
+.controller('FriendsFeedCtrl', function($scope, $http, $ionicPopup) {
+  $scope.hello = "friends feed";
 })
 
 .controller('NearbyCtrl', function($scope, $state, $http, $cordovaGeolocation, $ionicLoading, $compile) {

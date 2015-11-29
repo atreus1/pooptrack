@@ -50,16 +50,36 @@ angular.module('starter', ['ionic', 'starter.controllers', 'starter.services'])
     templateUrl: 'templates/tabs.html'
   })
 
-  // Each tab has its own nav history stack:
   .state('tab.feed', {
     url: '/feed',
     views: {
       'tab-feed': {
         templateUrl: 'templates/tab-feed.html',
-        controller: 'FeedCtrl'
+        controller: 'FeedCtrl',
+        abstract: true
       }
     }
   })
+
+  .state('tab.feed.global', {
+    url: '/global',
+    views: {
+      'tab-feed-global': {
+        templateUrl: 'templates/tab-feed-global.html',
+        controller: 'GlobalFeedCtrl'
+      }
+    }
+  })
+
+  .state('tab.feed.friends', {
+    url: '/friends',
+    views: {
+      'tab-feed-friends': {
+        templateUrl: 'templates/tab-feed-friends.html',
+        controller: 'FriendsFeedCtrl'
+      }
+    }
+  })  
 
   .state('tab.nearby', {
       url: '/nearby',
