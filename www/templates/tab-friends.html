@@ -7,7 +7,7 @@
       </label>
     </form>
     <ion-list>
-      <p class="item item-divider">search results</p> 
+      <p id="resultTitle" class="item item-divider">search results</p> 
       <p id="noResult" class="info">{{message}}</p>
       <ion-item ng-repeat="u in users" can-swipe="listCanSwipe">
         <p style="float:left;">{{u.user_id}}</p>

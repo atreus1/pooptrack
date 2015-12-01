@@ -385,8 +385,9 @@ angular.module('starter.controllers', ['ngCordova'])
     $http.post(url, sendData)
     .success(function(data, status, headers, config) {
       console.log(data);
+      $("#resultTitle").css({"display": "block"});
       if (data.success === 1) {
-        $("#noResult").css({"display": "none"});
+        $("#noResult").css({"display": "none"});        
         $scope.users = data.user;
       } else {
         console.log(data.error_msg);
@@ -394,6 +395,7 @@ angular.module('starter.controllers', ['ngCordova'])
         $scope.users = null;
         $scope.message = "Could not find any mathing users. Tip: use * to search for all users.";
         $("#noResult").css({"display": "block"});
+
       }
     })
     .error(function(data, status, headers, config) {
@@ -415,6 +417,7 @@ angular.module('starter.controllers', ['ngCordova'])
           title : "Makin' connections",
           subTitle: "You are now friend with \""+sendData["friend"]+"\"!"
         });
+        $("#resultTitle").css({"display": "none"});
         $scope.displayFriends();
       } else {
         console.log(data.error_msg);       
