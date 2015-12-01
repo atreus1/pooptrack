@@ -1,18 +1,26 @@
-<ion-view view-title="Friends">
+<ion-view view-title="friends">
   <ion-content padding="true" class="has-header">
     <form class="list">
       <label class="item item-input">
         <i class="icon ion-search placeholder-icon"></i>
           <input type="search" ng-enter="doSearch()" ng-model="searchField.query">
       </label>
-    </form>    
-    <ion-list> 
-      <ion-item><p>{{info}}</p></ion-item>     
+    </form>
+    <ion-list>
+      <p class="item item-divider">search results</p> 
+      <p id="noResult" class="info">{{message}}</p>
       <ion-item ng-repeat="u in users" can-swipe="listCanSwipe">
         <p style="float:left;">{{u.user_id}}</p>
         <i class="ion-chevron-left" style="float:right;"></i>
         <ion-option-button class="button-balanced" ng-click="addFriend(u)">Follow</ion-option-button>
-      </ion-item>
+      </ion-item>      
+      <p class="item item-divider">my friends</p>
+      <p id="noFriends" class="info" style="display:none;">You have no friends yet!</p>
+      <ion-item ng-repeat="f in friends" can-swipe="listCanSwipe">
+        <p style="float:left;">{{f.friend_with}}</p>
+        <i class="ion-chevron-left" style="float:right;"></i>
+        <ion-option-button class="button-assertive" ng-click="deleteFriend(f)">Unfollow</ion-option-button>
+      </ion-item>      
     </ion-list>
   </ion-content>
 </ion-view>

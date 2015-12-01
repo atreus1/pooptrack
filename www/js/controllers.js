@@ -2,22 +2,26 @@ var url = "http://userapan.myds.me/pooptrack_server/index.php";
 
 angular.module('starter.controllers', ['ngCordova'])
 
+// ##################################################################
+
 .controller('MainCtrl', function($scope) {})
 
+// ##################################################################
+
+// Controller for login.html
 .controller('LoginCtrl', function($scope, $http, $ionicPopup, $state) {
-  
+
+  // Check if user is already logged in, then go to feed.
   if(window.localStorage['user_id']) {
     $state.go('tab.feed');
   }
 
+  // Create javascript object to get user parameters
   $scope.user = {};
 
+  // Perform login function
   $scope.login = function() {
-    var sendData = {
-      'tag': "login",
-      'user_id': $scope.user.username,
-      'password': $scope.user.password
-    };
+    var sendData = {'tag':"login", 'user_id':$scope.user.username, 'password':$scope.user.password};
 
     $http.post(url, sendData)
     .success(function(data, status, headers, config) {
@@ -25,9 +29,11 @@ angular.module('starter.controllers', ['ngCordova'])
       if (data.success === 1) {
         console.log("login complete");
 
+        // Store user in cache
         window.localStorage['user_id'] = sendData["user_id"];
         window.localStorage['name'] = data.user.name;
 
+        // Go to global feed
         $state.go('tab.feed');
       } else {
         console.log(data.error_msg);
@@ -43,16 +49,16 @@ angular.module('starter.controllers', ['ngCordova'])
   }
 })
 
+// ##################################################################
+
+// Controller for register.html
 .controller('RegisterCtrl', function($scope, $http, $ionicPopup, $state) {
+  // Create javascript object to get user parameters
   $scope.user = {};
 
+  // Register user
   $scope.register = function() {
-    var sendData = {
-      'tag': "register",      
-      'user_id': $scope.user.username,
-      'password': $scope.user.password,
-      'name': $scope.user.name
-    };
+    var sendData = {'tag':"register", 'user_id':$scope.user.username, 'password':$scope.user.password, 'name':$scope.user.name};
 
     $http.post(url, sendData)
     .success(function(data, status, headers, config) {
@@ -61,12 +67,11 @@ angular.module('starter.controllers', ['ngCordova'])
       if (data.success === 1) {
         console.log("registration complete");
 
-        console.log("storing user_id "+sendData["user_id"]);
-        console.log("storing name "+sendData["name"]);
-
+        // Store user in cache
         window.localStorage['user_id'] = sendData["user_id"];
         window.localStorage['name'] = sendData["name"];
 
+        // Display welcome message
         var welcomePopup = $ionicPopup.alert({
           title : "Registration complete!",
           subTitle: "Welcome "+sendData["name"]+"!"
@@ -87,87 +92,90 @@ angular.module('starter.controllers', ['ngCordova'])
   }
 })
 
-.controller('FeedCtrl', function($scope, $http, $ionicPopup) {
-  
-  // var tag = 'getFeed';
-  // $scope.setFeed = function(input) {
-  //     tag = input;
-  //     $scope.doRefresh();
-  // };
+// ##################################################################
 
-  // $scope.$on('$ionicView.beforeEnter', function() {
-  //   var sendData = {
-  //     'tag': tag,    
-  //     'user_id': window.localStorage['user_id']
-  //   };    
+.controller('FeedCtrl', function($scope) {})
 
-  //   $http.post(url, sendData)
-  //   .success(function(data, status, headers, config) {
-  //     console.log(data);
+// ##################################################################
 
-  //     if (data.success === 1) {
-  //       console.log("getting feed :)");
-  //       $scope.feed = data.feed;
-  //       window.localStorage.setItem("feed", JSON.stringify(data.feed));
-  //     } else {
-  //       console.log(data.error_msg);        
-  //     }
-  //   })
-  //   .error(function(data, status, headers, config) {
-  //     console.log('error');
-  //   });
-  // });
-    
-  // $scope.doRefresh = function() {
-  //   var sendData = {
-  //     'tag': tag,      
-  //     'user_id': window.localStorage['user_id']
-  //   };
-
-  //   $http.post(url, sendData)
-  //   .success(function(data, status, headers, config) {
-  //     console.log(data);
-  //     if (data.success === 1) {
-  //       console.log("getting feed refresh");
-  //       $scope.feed = data.feed;
-  //       window.localStorage.setItem("feed", JSON.stringify(data.feed));
-  //     } else {
-  //       console.log(data.error_msg);
-  //       var welcomePopup = $ionicPopup.alert({
-  //         title : "Could not get feed",
-  //         subTitle: data.error_msg
-  //       });        
-  //     }
-  //   })
-  //   .error(function(data, status, headers, config) {
-  //     console.log('error');
-  //   })
-  //   .finally(function() {
-  //     // Stop the ion-refresher from spinning
-  //     $scope.$broadcast('scroll.refreshComplete');
-  //   });
-  // };
-})
-
+// Controller for tab-feed-global.html
 .controller('GlobalFeedCtrl', function($scope, $http, $ionicPopup) {
-  $scope.hello = "global feed";
-})
+  var sendData = {'tag':'getFeed', 'user_id':window.localStorage['user_id']};
 
-.controller('FriendsFeedCtrl', function($scope, $http, $ionicPopup) {
-  $scope.hello = "friends feed";
-})
-
-.controller('NearbyCtrl', function($scope, $state, $http, $cordovaGeolocation, $ionicLoading, $compile) {
+  // Update feed when user enters scene
   $scope.$on('$ionicView.beforeEnter', function() {
-    var sendData = {
-      'tag': "getFeed",      
-      'user_id': window.localStorage['user_id']
-    };
+    $scope.doRefresh();
+  });
+
+
+  // Update feed from database
+  $scope.doRefresh = function() {
     $http.post(url, sendData)
     .success(function(data, status, headers, config) {
       console.log(data);
       if (data.success === 1) {
-        console.log("getting feed :)");
+        $scope.feed = data.feed;
+        window.localStorage.setItem("feed", JSON.stringify(data.feed)); // Not doing anything with the data?
+      } else {
+        console.log(data.error_msg); 
+      }
+    })
+    .error(function(data, status, headers, config) {
+      console.log('error');
+    })
+    .finally(function() {
+      // Stop the ion-refresher from spinning
+      $scope.$broadcast('scroll.refreshComplete');
+    });
+  };
+})
+
+// ##################################################################
+
+// Controller for tab-feed-friends.html
+.controller('FriendsFeedCtrl', function($scope, $http, $ionicPopup) {
+  var sendData = {'tag':'getFriendFeed', 'user_id':window.localStorage['user_id']};
+
+  // Update feed when user enters scene
+  $scope.$on('$ionicView.beforeEnter', function() {
+    $scope.doRefresh();
+  });
+
+  // Update feed from database
+  $scope.doRefresh = function() {
+    $http.post(url, sendData)
+    .success(function(data, status, headers, config) {
+      console.log(data);
+      if (data.success === 1) {
+        $scope.feed = data.feed;
+        window.localStorage.setItem("feed", JSON.stringify(data.feed)); // Not doing anything with the data?
+      } else {
+        console.log(data.error_msg); 
+      }
+    })
+    .error(function(data, status, headers, config) {
+      console.log('error');
+    })
+    .finally(function() {
+      // Stop the ion-refresher from spinning
+      $scope.$broadcast('scroll.refreshComplete');
+    });
+  };
+})
+
+// ##################################################################
+
+// Controller for tab-nearby.html
+.controller('NearbyCtrl', function($scope, $state, $http, $cordovaGeolocation, $ionicLoading, $compile) {
+
+  // Update feed when user enters scene
+  $scope.$on('$ionicView.beforeEnter', function() {
+    var sendData = {'tag':"getFeed", 'user_id':window.localStorage['user_id']};
+
+    $http.post(url, sendData)
+    .success(function(data, status, headers, config) {
+      console.log(data);
+      if (data.success === 1) {
         $scope.feed = data.feed;
         window.localStorage.setItem("feed", JSON.stringify(data.feed));
       } else {
@@ -207,16 +215,6 @@ angular.module('starter.controllers', ['ngCordova'])
     				  map: map,
     				  title: feed[i].name
     				});
-
-    				// infowindow[i] = new google.maps.InfoWindow({
-    				// 	position: pos,
-    				// 	content: compiled[0]
-    				// });
-
-    				// google.maps.event.addListener(marker[i], 'click', function() {
-    				//   console.log("fittskalle "+i);
-    				//   infowindow[i].open(map,marker[0]);
-    				// });
     			}
           $scope.map = map;
         } else {
@@ -227,7 +225,6 @@ angular.module('starter.controllers', ['ngCordova'])
       }
     );
   
-  // google.maps.event.addDomListener(window, 'load', initialize);
     $scope.centerOnMe = function() {
         if(!$scope.map) {
             return;
@@ -248,13 +245,15 @@ angular.module('starter.controllers', ['ngCordova'])
     };
 	});
 })
-// .controller('ChatDetailCtrl', function($scope, $stateParams, Chats) {
-//   $scope.chat = Chats.get($stateParams.chatId);
-// })
 
+// ##################################################################
+
+// Controller for tab-add.html
 .controller('AddCtrl', function($scope, $http, $ionicPopup, $cordovaGeolocation, $state) {
+
+  // Update feed when user enters scene
   $scope.$on('$ionicView.beforeEnter', function() {
-    if(window.localStorage['poops'] == undefined) { 
+    if(window.localStorage['poops'] == undefined) {  // Needs to be re-written to target real database
       $http.get('http://tolva.nu/poop/getPoops.php')
       .success(function(data) {
         $scope.poops = data;
@@ -263,10 +262,8 @@ angular.module('starter.controllers', ['ngCordova'])
     } 
     $scope.poops = JSON.parse(window.localStorage.getItem("poops"));
   });
-  $scope.settings = {
-    enableFriends: true
-  };
 
+  // Poop descriptions
   $scope.desc = function(desc) {
     var alertPopup = $ionicPopup.alert({
       title: 'Story time!',
@@ -275,154 +272,196 @@ angular.module('starter.controllers', ['ngCordova'])
   };
 })
 
+// ##################################################################
+
+// Controller for tab-add-detail.html
 .controller('AddDetailCtrl', function($scope, $stateParams, $http, $state, $cordovaGeolocation, $ionicHistory) {
+
+  // Store in-parameter of poop type
   $scope.type = $stateParams.type;
   var lat = "";
   var longi = "";
-  var timeoutId = null;
+
   var options = {timeout: 10000, enableHighAccuracy: true};
   $cordovaGeolocation.getCurrentPosition(options).then(function(position) {
+    // Store device position in variables
     lat = position.coords.latitude;
     longi = position.coords.longitude;
   });
-    
+  
+  // Allocate memory for user inputs
   $scope.add = {};
   $scope.add.rangeValue = 40;
   $scope.add.comment = "";
   
+  // Update slider value when dragging
   $scope.$watch('add.rangeValue',function(val,old){
      $scope.add.rangeValue = parseInt(val);
   });
   
-  $scope.rangeFilter = function(number) {
-      return (number.value > $scope.add.rangeValue);
-  }
 
+  // Add new poop event to database
   $scope.addToDatabase = function(type) {
-    var sendData = {
-          'tag': "addPoop",      
-          'user_id': window.localStorage['user_id'],
-          'type': type,
-          'comment': $scope.add.comment,
-          'location': lat+","+longi,
-          'rate': $scope.add.rangeValue
-    };
+    var sendData = {'tag':"addPoop", 'user_id':window.localStorage['user_id'], 'type':type, 'comment':$scope.add.comment, 'location':lat+","+longi, 'rate':$scope.add.rangeValue};
 
     $http.post(url, sendData)
     .success(function(data, status, headers, config) {
       console.log(data);
-
-      if (data.success === 1) {
-        console.log("added new poop post");
-
-      } else {
+      if (data.success !== 1) {
         console.log(data.error_msg);
         var welcomePopup = $ionicPopup.alert({
           title : "Error",
           subTitle: data.error_msg
-        });        
+        });
       }
     })
     .error(function(data, status, headers, config) {
       console.log('error');
     }); 
 
+    // Back out from inner view
     $ionicHistory.goBack();
 
     setTimeout(function(){
+      // Go to feed
       $state.go('tab.feed');
     }, 100);
-    
-
   };
 })
 
+// ##################################################################
+
+// Controller for tab-friends.html
 .controller('FriendsCtrl', function($scope, $http, $ionicPopup) {
+  // Update feed when user enters scene
+  $scope.$on('$ionicView.beforeEnter', function() {
+    $scope.displayFriends();
+  });
+
+
+  // Show all friends of current user
+  $scope.displayFriends = function() {
+    var sendData = {'tag':"getFriends",'user_id': window.localStorage['user_id']};
+
     $scope.searchField = {};
     $scope.searchField.query = "";
 
-    $scope.info = "No users to display. Try search for one!";
+    $scope.message = "No users to display. Try search for one!";
 
-    $scope.doSearch = function() {
-      console.log($scope.searchField.query);
+    $http.post(url, sendData)
+    .success(function(data, status, headers, config) {
+      console.log(data);
+      if (data.success === 1) {
+        $scope.friends = data.friends;
+        $("#noFriends").css({"display": "none"});
+      } else {
+        console.log(data.error_msg);
+        $("#noFriends").css({"display": "block"});
+      }
+    })
+    .error(function(data, status, headers, config) {
+      console.log('error');
+    });    
+  }
 
-      var sendData = {
-        'tag': "searchFriends",
-        'query': $scope.searchField.query,
-      };
 
-      $http.post(url, sendData)
-      .success(function(data, status, headers, config) {
-        console.log(data);
+  // Triggers whit submit at search field. Search for users in
+  // database which is matching $scope.searchField.query
+  $scope.doSearch = function() {
+    $scope.tag = "";
 
-        if (data.success === 1) {
-          $scope.users = data.user;
-        } else {
-          console.log(data.error_msg);
-     
-        }
-      })
-      .error(function(data, status, headers, config) {
-        console.log('error');
-      });      
-    };    
+    if ($scope.searchField.query !== "") {
+      if ($scope.searchField.query === "*") {
+        $scope.tag = "getAllUsers";
+      } else {
+        $scope.tag = "searchFriends";
+      }
+    } else {
+      return;
+    }
 
-    // var sendData = {
-    //   'tag': "getAllUsers",
-    //   'user_id': window.localStorage['user_id'],
-    // };
+    var sendData = {'tag':$scope.tag, 'user_id':window.localStorage['user_id'], 'query':$scope.searchField.query};
 
-    // $http.post(url, sendData)
-    // .success(function(data, status, headers, config) {
-    //   console.log(data);
+    $http.post(url, sendData)
+    .success(function(data, status, headers, config) {
+      console.log(data);
+      if (data.success === 1) {
+        $("#noResult").css({"display": "none"});
+        $scope.users = data.user;
+      } else {
+        console.log(data.error_msg);
+        console.log("HIORA");
+        $scope.users = null;
+        $scope.message = "Could not find any mathing users. Tip: use * to search for all users.";
+        $("#noResult").css({"display": "block"});
+      }
+    })
+    .error(function(data, status, headers, config) {
+      console.log('error');
+    });      
+  };    
 
-    //   if (data.success === 1) {
-    //     $scope.users = data.users;
-    //   } else {
-    //     console.log(data.error_msg);
-    //     // var welcomePopup = $ionicPopup.alert({
-    //     //   title : "Error",
-    //     //   subTitle: data.error_msg
-    //     // });        
-    //   }
-    // })
-    // .error(function(data, status, headers, config) {
-    //   console.log('error');
-    // });    
 
-    $scope.addFriend = function(friend) {
-      console.log(friend.user_id);
-      var sendData = {
-        'tag': "addFriend",
-        'user_id': window.localStorage['user_id'],
-        'friend': friend.user_id
-      };
+  // Add friend and stores it in the database
+  $scope.addFriend = function(friend) {
+    var sendData = {'tag':"addFriend", 'user_id':window.localStorage['user_id'], 'friend':friend.user_id};
 
-      $http.post(url, sendData)
-      .success(function(data, status, headers, config) {
-        console.log(data);
+    $http.post(url, sendData)
+    .success(function(data, status, headers, config) {
+      console.log(data);
+      if (data.success === 1) {
+        $scope.users = data.users;
+        var friendPopup = $ionicPopup.alert({
+          title : "Makin' connections",
+          subTitle: "You are now friend with \""+sendData["friend"]+"\"!"
+        });
+        $scope.displayFriends();
+      } else {
+        console.log(data.error_msg);       
+      }
+    })
+    .error(function(data, status, headers, config) {
+      console.log('error');
+    });      
+  };
 
-        if (data.success === 1) {
-          $scope.users = data.users;
-            var friendPopup = $ionicPopup.alert({
-              title : "Makin' connections",
-              subTitle: "You are now friend with \""+sendData["friend"]+"\"!"
-            });          
-        } else {
-          console.log(data.error_msg);
-          // var welcomePopup = $ionicPopup.alert({
-          //   title : "Error",
-          //   subTitle: data.error_msg
-          // });        
-        }
-      })
-      .error(function(data, status, headers, config) {
-        console.log('error');
-      });      
-    };
+
+  // Delete friend connection from database
+  $scope.deleteFriend = function(friend) {
+    var remove = $ionicPopup.confirm({
+        title: "Confirm removal",
+        template: "Are you sure you want to remove "+friend.friend_with+" as your friend?",
+        okType: "button-assertive"
+    }).then(function(res) {
+     if (res){
+        console.log("remove friend");
+        var sendData = {'tag':"removeFriend", 'user_id':friend.user_id, 'friend':friend.friend_with};
+
+        $http.post(url, sendData)
+        .success(function(data, status, headers, config) {
+          console.log(data);
+          if (data.success === 1) {
+            $scope.displayFriends();
+          } else {
+            console.log(data.error_msg);
+          }
+        })
+        .error(function(data, status, headers, config) {
+          console.log('error');
+        });            
+      }
+    });     
+  };
 })
 
+
+// ##################################################################
+
+
+// Controller for tab-profile.html
 .controller('ProfileCtrl', function($scope, $http, $ionicPopup, $state) {
+
+  // Do function each time user enters scene
   $scope.$on('$ionicView.enter', function() {
     $scope.user_id = window.localStorage['user_id'];
     $scope.username = window.localStorage['name'];
@@ -440,16 +479,14 @@ angular.module('starter.controllers', ['ngCordova'])
       });
     };
 
+
+    // Count all available #dumps in database
     $scope.countDumps = function() {
-      var sendData = {
-        'tag': "countDumps",      
-        'user_id': window.localStorage['user_id']
-      };
+      var sendData = {'tag':"countDumps", 'user_id': window.localStorage['user_id']};
 
       $http.post(url, sendData)
       .success(function(data, status, headers, config) {
         console.log(data);
-
         if (data.success === 1) {
           $scope.count = data.count;
           $scope.most_used = data.most_used;
@@ -462,11 +499,12 @@ angular.module('starter.controllers', ['ngCordova'])
         console.log('error');
       });    
     };
-
     $scope.countDumps();
   });  
 })
 
+
+// Angular directive for searcfield submission
 .directive('ngEnter', function() {
   return function(scope, element, attrs) {
     element.bind("keydown keypress", function(event) {
