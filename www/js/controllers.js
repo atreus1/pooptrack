@@ -22,18 +22,10 @@ angular.module('starter.controllers', ['ngCordova'])
   // Perform login function
   $scope.login = function() {
     var sendData = {'tag':"login", 'user_id':$scope.user.username, 'password':$scope.user.password};
-
-    if (ionic.Platform.isIOS()) {
-      $cordovaProgress.showSimple(true);
-    }
-
     $http.post(url, sendData)
     .success(function(data, status, headers, config) {
       console.log(data);
 
-      if (ionic.Platform.isIOS()) {
-        $cordovaProgress.hide();
-      }
 
       if (data.success === 1) {
         console.log("login complete");
@@ -294,7 +286,7 @@ angular.module('starter.controllers', ['ngCordova'])
 // ##################################################################
 
 // Controller for tab-add.html
-.controller('AddCtrl', function($scope, $http, $ionicPopup, $cordovaGeolocation, $state) {
+.controller('AddCtrl', function($scope, $http, $ionicPopup, $cordovaGeolocation, $state, $ionicListDelegate) {
 
   // Update feed when user enters scene
   $scope.$on('$ionicView.beforeEnter', function() {
@@ -314,6 +306,7 @@ angular.module('starter.controllers', ['ngCordova'])
       title: 'Story time!',
       template: desc
     });
+    $ionicListDelegate.closeOptionButtons();
   };
 })
 
@@ -377,12 +370,11 @@ angular.module('starter.controllers', ['ngCordova'])
 // ##################################################################
 
 // Controller for tab-friends.html
-.controller('FriendsCtrl', function($scope, $http, $ionicPopup) {
+.controller('FriendsCtrl', function($scope, $http, $ionicPopup, $ionicListDelegate, $state) {
   // Update feed when user enters scene
   $scope.$on('$ionicView.beforeEnter', function() {
     $scope.displayFriends();
   });
-
 
   // Show all friends of current user
   $scope.displayFriends = function() {
@@ -401,6 +393,7 @@ angular.module('starter.controllers', ['ngCordova'])
         $("#noFriends").css({"display": "none"});
       } else {
         console.log(data.error_msg);
+        $scope.friends = {};
         $("#noFriends").css({"display": "block"});
       }
     })
@@ -436,7 +429,6 @@ angular.module('starter.controllers', ['ngCordova'])
         $scope.users = data.user;
       } else {
         console.log(data.error_msg);
-        console.log("HIORA");
         $scope.users = null;
         $scope.message = "Could not find any mathing users. Tip: use * to search for all users.";
         $("#noResult").css({"display": "block"});
@@ -463,6 +455,8 @@ angular.module('starter.controllers', ['ngCordova'])
           subTitle: "You are now friend with \""+sendData["friend"]+"\"!"
         });
         $("#resultTitle").css({"display": "none"});
+        $ionicListDelegate.closeOptionButtons();
+        $state.reload();
         $scope.displayFriends();
       } else {
         console.log(data.error_msg);       
@@ -489,6 +483,7 @@ angular.module('starter.controllers', ['ngCordova'])
         .success(function(data, status, headers, config) {
           console.log(data);
           if (data.success === 1) {
+            $ionicListDelegate.closeOptionButtons();
             $scope.displayFriends();
           } else {
             console.log(data.error_msg);
@@ -498,7 +493,8 @@ angular.module('starter.controllers', ['ngCordova'])
           console.log('error');
         });            
       }
-    });     
+    });
+    $state.reload();     
   };
 })
 
@@ -507,12 +503,33 @@ angular.module('starter.controllers', ['ngCordova'])
 
 
 // Controller for tab-profile.html
-.controller('ProfileCtrl', function($scope, $http, $ionicPopup, $state) {
-
+.controller('ProfileCtrl', function($scope, $http, $ionicPopup, $state, $ionicListDelegate, $ionicHistory) {
+  
   // Do function each time user enters scene
-  $scope.$on('$ionicView.enter', function() {
+  $scope.$on('$ionicView.beforeEnter', function() {
     $scope.user_id = window.localStorage['user_id'];
     $scope.username = window.localStorage['name'];
+
+    // Count all available #dumps in database
+    $scope.countDumps = function() {
+      var sendData = {'tag':"countDumps", 'user_id': window.localStorage['user_id']};
+
+      $http.post(url, sendData)
+      .success(function(data, status, headers, config) {
+        console.log(data);
+        if (data.success === 1) {
+          $scope.count = data.count;
+          $scope.most_used = data.most_used;
+        } else {
+          console.log(data.error_msg);
+          $scope.dumps = 0;    
+        }
+      })
+      .error(function(data, status, headers, config) {
+        console.log('error');
+      });    
+    };
+    $scope.countDumps();
 
     $scope.logout = function() {
       var logoutPopup = $ionicPopup.confirm({
@@ -547,7 +564,9 @@ angular.module('starter.controllers', ['ngCordova'])
                 .success(function(data, status, headers, config) {
                     console.log(data);
                     if (data.success === 1) {
-
+                      window.localStorage['name'] = $scope.data.username;
+                      $ionicListDelegate.closeOptionButtons();
+                      $state.reload();
                     } else {
                       console.log(data.error_msg);
                     }
@@ -561,27 +580,6 @@ angular.module('starter.controllers', ['ngCordova'])
         ]
       });
     };
-
-    // Count all available #dumps in database
-    $scope.countDumps = function() {
-      var sendData = {'tag':"countDumps", 'user_id': window.localStorage['user_id']};
-
-      $http.post(url, sendData)
-      .success(function(data, status, headers, config) {
-        console.log(data);
-        if (data.success === 1) {
-          $scope.count = data.count;
-          $scope.most_used = data.most_used;
-        } else {
-          console.log(data.error_msg);
-          $scope.dumps = 0;    
-        }
-      })
-      .error(function(data, status, headers, config) {
-        console.log('error');
-      });    
-    };
-    $scope.countDumps();
   });  
 })
 
