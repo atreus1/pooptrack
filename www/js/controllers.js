@@ -9,7 +9,7 @@ angular.module('starter.controllers', ['ngCordova'])
 // ##################################################################
 
 // Controller for login.html
-.controller('LoginCtrl', function($scope, $http, $ionicPopup, $state) {
+.controller('LoginCtrl', function($scope, $http, $ionicPopup, $state, $cordovaProgress) {
 
   // Check if user is already logged in, then go to feed.
   if(window.localStorage['user_id']) {
@@ -23,9 +23,18 @@ angular.module('starter.controllers', ['ngCordova'])
   $scope.login = function() {
     var sendData = {'tag':"login", 'user_id':$scope.user.username, 'password':$scope.user.password};
 
+    if (ionic.Platform.isIOS()) {
+      $cordovaProgress.showSimple(true);
+    }
+
     $http.post(url, sendData)
     .success(function(data, status, headers, config) {
       console.log(data);
+
+      if (ionic.Platform.isIOS()) {
+        $cordovaProgress.hide();
+      }
+
       if (data.success === 1) {
         console.log("login complete");
 
@@ -80,7 +89,7 @@ angular.module('starter.controllers', ['ngCordova'])
 // ##################################################################
 
 // Controller for register.html
-.controller('RegisterCtrl', function($scope, $http, $ionicPopup, $state) {
+.controller('RegisterCtrl', function($scope, $http, $ionicPopup, $state, $cordovaProgress) {
   // Create javascript object to get user parameters
   $scope.user = {};
 
@@ -88,9 +97,17 @@ angular.module('starter.controllers', ['ngCordova'])
   $scope.register = function() {
     var sendData = {'tag':"register", 'user_id':$scope.user.username, 'password':$scope.user.password, 'name':$scope.user.name};
 
+    if (ionic.Platform.isIOS()) {
+      $cordovaProgress.showSimple(true);
+    }
+
     $http.post(url, sendData)
     .success(function(data, status, headers, config) {
       console.log(data);
+
+      if (ionic.Platform.isIOS()) {
+        $cordovaProgress.hide();
+      }      
 
       if (data.success === 1) {
         console.log("registration complete");
@@ -523,22 +540,21 @@ angular.module('starter.controllers', ['ngCordova'])
             type: 'button-positive',
             onTap: function(e) {
               if (!$scope.data.username) {
-                //don't allow the user to close unless he enters wifi password
                 e.preventDefault();
               } else {
-                var sendData = {'tag':"setUsername", 'user_id':$scope.user_id, 'username':$scope.data.username};
+                var sendData = {'tag':"setUsername", 'user_id':$scope.user_id, 'name':$scope.data.username};
                 $http.post(url, sendData)
                 .success(function(data, status, headers, config) {
                     console.log(data);
                     if (data.success === 1) {
-                      $scope.displayFriends();
+
                     } else {
                       console.log(data.error_msg);
                     }
-                  })
-                  .error(function(data, status, headers, config) {
-                    console.log('error');
-                  });
+                })
+                .error(function(data, status, headers, config) {
+                  console.log('error');
+                });
               }
             }
           }
