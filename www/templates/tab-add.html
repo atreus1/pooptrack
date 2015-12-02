@@ -1,7 +1,6 @@
 <ion-view view-title="add">
   <ion-content padding="false" class="has-header">
     <ion-list>
-      <!-- <ion-item ng-repeat="p in poops" class="item-thumbnail-left" can-swipe="listCanSwipe" ng-click="add(p.type)"> -->
       <ion-item ng-repeat="p in poops" class="item-thumbnail-left" can-swipe="listCanSwipe" href="#/tab/add/{{p.type}}">
         <img src="img/{{p.type}}.png">
         <h2>{{p.name}}</h2>

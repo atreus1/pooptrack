@@ -47,6 +47,34 @@ angular.module('starter.controllers', ['ngCordova'])
       console.log('error');
     });
   }
+
+  $scope.anon = function() {
+     var random = Math.random().toString(36).substring(3);
+     var sendData = {'tag':"register", 'user_id':random, 'password':"", 'name':random};
+    $http.post(url, sendData)
+    .success(function(data, status, headers, config) {
+      console.log(data);
+      if (data.success === 1) {
+        console.log("login complete");
+
+        // Store user in cache
+        window.localStorage['user_id'] = random;
+        window.localStorage['name'] = random;
+
+        // Go to global feed
+        $state.go('tab.feed');
+      } else {
+        console.log(data.error_msg);
+        var welcomePopup = $ionicPopup.alert({
+          title : "Login failure",
+          subTitle: data.error_msg
+        });
+      }
+    })
+    .error(function(data, status, headers, config) {
+      console.log('error');
+    });
+  }
 })
 
 // ##################################################################
@@ -482,6 +510,41 @@ angular.module('starter.controllers', ['ngCordova'])
       });
     };
 
+    $scope.setUsername = function() {
+      $scope.data = {}
+      var myPopup = $ionicPopup.show({
+        template: '<input type="text" ng-model="data.username">',
+        title: 'Enter Username',
+        scope: $scope,
+        buttons: [
+          { text: 'Cancel' },
+          {
+            text: '<b>Save</b>',
+            type: 'button-positive',
+            onTap: function(e) {
+              if (!$scope.data.username) {
+                //don't allow the user to close unless he enters wifi password
+                e.preventDefault();
+              } else {
+                var sendData = {'tag':"setUsername", 'user_id':$scope.user_id, 'username':$scope.data.username};
+                $http.post(url, sendData)
+                .success(function(data, status, headers, config) {
+                    console.log(data);
+                    if (data.success === 1) {
+                      $scope.displayFriends();
+                    } else {
+                      console.log(data.error_msg);
+                    }
+                  })
+                  .error(function(data, status, headers, config) {
+                    console.log('error');
+                  });
+              }
+            }
+          }
+        ]
+      });
+    };
 
     // Count all available #dumps in database
     $scope.countDumps = function() {
