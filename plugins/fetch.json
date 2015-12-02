@@ -54,5 +54,13 @@
         },
         "is_top_level": true,
         "variables": {}
+    },
+    "org.pbernasconi.progressindicator": {
+        "source": {
+            "type": "registry",
+            "id": "cordova-plugin-progressindicator"
+        },
+        "is_top_level": true,
+        "variables": {}
     }
 }

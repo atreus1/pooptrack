@@ -8,3 +8,10 @@
 .scroll {
   height: 100%;
 }
+
+p.info {
+	color: #444;
+	z-index: 2;
+	padding: 14px;
+	font-size: 16px;
+}
