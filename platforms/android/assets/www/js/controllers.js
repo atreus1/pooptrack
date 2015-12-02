@@ -22,18 +22,10 @@ angular.module('starter.controllers', ['ngCordova'])
   // Perform login function
   $scope.login = function() {
     var sendData = {'tag':"login", 'user_id':$scope.user.username, 'password':$scope.user.password};
-
-    if (ionic.Platform.isIOS()) {
-      $cordovaProgress.showSimple(true);
-    }
-
     $http.post(url, sendData)
     .success(function(data, status, headers, config) {
       console.log(data);
 
-      if (ionic.Platform.isIOS()) {
-        $cordovaProgress.hide();
-      }
 
       if (data.success === 1) {
         console.log("login complete");
@@ -41,6 +33,34 @@ angular.module('starter.controllers', ['ngCordova'])
         // Store user in cache
         window.localStorage['user_id'] = sendData["user_id"];
         window.localStorage['name'] = data.user.name;
+
+        // Go to global feed
+        $state.go('tab.feed');
+      } else {
+        console.log(data.error_msg);
+        var welcomePopup = $ionicPopup.alert({
+          title : "Login failure",
+          subTitle: data.error_msg
+        });
+      }
+    })
+    .error(function(data, status, headers, config) {
+      console.log('error');
+    });
+  }
+
+  $scope.anon = function() {
+     var random = Math.random().toString(36).substring(3);
+     var sendData = {'tag':"register", 'user_id':random, 'password':"", 'name':random};
+    $http.post(url, sendData)
+    .success(function(data, status, headers, config) {
+      console.log(data);
+      if (data.success === 1) {
+        console.log("login complete");
+
+        // Store user in cache
+        window.localStorage['user_id'] = random;
+        window.localStorage['name'] = random;
 
         // Go to global feed
         $state.go('tab.feed');
@@ -76,9 +96,10 @@ angular.module('starter.controllers', ['ngCordova'])
     $http.post(url, sendData)
     .success(function(data, status, headers, config) {
       console.log(data);
+
       if (ionic.Platform.isIOS()) {
         $cordovaProgress.hide();
-      }
+      }      
 
       if (data.success === 1) {
         console.log("registration complete");
@@ -265,7 +286,7 @@ angular.module('starter.controllers', ['ngCordova'])
 // ##################################################################
 
 // Controller for tab-add.html
-.controller('AddCtrl', function($scope, $http, $ionicPopup, $cordovaGeolocation, $state) {
+.controller('AddCtrl', function($scope, $http, $ionicPopup, $cordovaGeolocation, $state, $ionicListDelegate) {
 
   // Update feed when user enters scene
   $scope.$on('$ionicView.beforeEnter', function() {
@@ -285,6 +306,7 @@ angular.module('starter.controllers', ['ngCordova'])
       title: 'Story time!',
       template: desc
     });
+    $ionicListDelegate.closeOptionButtons();
   };
 })
 
@@ -348,12 +370,11 @@ angular.module('starter.controllers', ['ngCordova'])
 // ##################################################################
 
 // Controller for tab-friends.html
-.controller('FriendsCtrl', function($scope, $http, $ionicPopup) {
+.controller('FriendsCtrl', function($scope, $http, $ionicPopup, $ionicListDelegate, $state) {
   // Update feed when user enters scene
   $scope.$on('$ionicView.beforeEnter', function() {
     $scope.displayFriends();
   });
-
 
   // Show all friends of current user
   $scope.displayFriends = function() {
@@ -372,6 +393,7 @@ angular.module('starter.controllers', ['ngCordova'])
         $("#noFriends").css({"display": "none"});
       } else {
         console.log(data.error_msg);
+        $scope.friends = {};
         $("#noFriends").css({"display": "block"});
       }
     })
@@ -407,7 +429,6 @@ angular.module('starter.controllers', ['ngCordova'])
         $scope.users = data.user;
       } else {
         console.log(data.error_msg);
-        console.log("HIORA");
         $scope.users = null;
         $scope.message = "Could not find any mathing users. Tip: use * to search for all users.";
         $("#noResult").css({"display": "block"});
@@ -434,6 +455,8 @@ angular.module('starter.controllers', ['ngCordova'])
           subTitle: "You are now friend with \""+sendData["friend"]+"\"!"
         });
         $("#resultTitle").css({"display": "none"});
+        $ionicListDelegate.closeOptionButtons();
+        $state.reload();
         $scope.displayFriends();
       } else {
         console.log(data.error_msg);       
@@ -460,6 +483,7 @@ angular.module('starter.controllers', ['ngCordova'])
         .success(function(data, status, headers, config) {
           console.log(data);
           if (data.success === 1) {
+            $ionicListDelegate.closeOptionButtons();
             $scope.displayFriends();
           } else {
             console.log(data.error_msg);
@@ -469,7 +493,8 @@ angular.module('starter.controllers', ['ngCordova'])
           console.log('error');
         });            
       }
-    });     
+    });
+    $state.reload();     
   };
 })
 
@@ -478,26 +503,12 @@ angular.module('starter.controllers', ['ngCordova'])
 
 
 // Controller for tab-profile.html
-.controller('ProfileCtrl', function($scope, $http, $ionicPopup, $state) {
-
+.controller('ProfileCtrl', function($scope, $http, $ionicPopup, $state, $ionicListDelegate, $ionicHistory) {
+  
   // Do function each time user enters scene
-  $scope.$on('$ionicView.enter', function() {
+  $scope.$on('$ionicView.beforeEnter', function() {
     $scope.user_id = window.localStorage['user_id'];
     $scope.username = window.localStorage['name'];
-
-    $scope.logout = function() {
-      var logoutPopup = $ionicPopup.confirm({
-        title: "Confirm logout",
-        okType: "button-assertive"
-      }).then(function(res) {
-        if (res){
-          console.log("logout");
-          window.localStorage.clear();
-          $state.go('login');        
-        }
-      });
-    };
-
 
     // Count all available #dumps in database
     $scope.countDumps = function() {
@@ -519,6 +530,56 @@ angular.module('starter.controllers', ['ngCordova'])
       });    
     };
     $scope.countDumps();
+
+    $scope.logout = function() {
+      var logoutPopup = $ionicPopup.confirm({
+        title: "Confirm logout",
+        okType: "button-assertive"
+      }).then(function(res) {
+        if (res){
+          console.log("logout");
+          window.localStorage.clear();
+          $state.go('login');        
+        }
+      });
+    };
+
+    $scope.setUsername = function() {
+      $scope.data = {}
+      var myPopup = $ionicPopup.show({
+        template: '<input type="text" ng-model="data.username">',
+        title: 'Enter Username',
+        scope: $scope,
+        buttons: [
+          { text: 'Cancel' },
+          {
+            text: '<b>Save</b>',
+            type: 'button-positive',
+            onTap: function(e) {
+              if (!$scope.data.username) {
+                e.preventDefault();
+              } else {
+                var sendData = {'tag':"setUsername", 'user_id':$scope.user_id, 'name':$scope.data.username};
+                $http.post(url, sendData)
+                .success(function(data, status, headers, config) {
+                    console.log(data);
+                    if (data.success === 1) {
+                      window.localStorage['name'] = $scope.data.username;
+                      $ionicListDelegate.closeOptionButtons();
+                      $state.reload();
+                    } else {
+                      console.log(data.error_msg);
+                    }
+                })
+                .error(function(data, status, headers, config) {
+                  console.log('error');
+                });
+              }
+            }
+          }
+        ]
+      });
+    };
   });  
 })
 
