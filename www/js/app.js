@@ -55,7 +55,6 @@ angular.module('starter', ['ionic', 'starter.controllers', 'starter.services'])
     views: {
       'tab-feed': {
         templateUrl: 'templates/tab-feed.html',
-        controller: 'FeedCtrl',
         abstract: true
       }
     }

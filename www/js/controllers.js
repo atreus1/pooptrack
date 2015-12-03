@@ -9,7 +9,7 @@ angular.module('starter.controllers', ['ngCordova'])
 // ##################################################################
 
 // Controller for login.html
-.controller('LoginCtrl', function($scope, $http, $ionicPopup, $state, $cordovaProgress) {
+.controller('LoginCtrl', function($scope, $state, $cordovaProgress, DBService) {
 
   // Check if user is already logged in, then go to feed.
   if(window.localStorage['user_id']) {
@@ -20,60 +20,34 @@ angular.module('starter.controllers', ['ngCordova'])
   $scope.user = {};
 
   // Perform login function
-  $scope.login = function() {
+  $scope.login = function(anonymous) {
     var sendData = {'tag':"login", 'user_id':$scope.user.username, 'password':$scope.user.password};
-    $http.post(url, sendData)
-    .success(function(data, status, headers, config) {
-      console.log(data);
 
-
-      if (data.success === 1) {
-        console.log("login complete");
-
+    DBService.sendToDB(sendData, true).then(function(promise) {
+      if (promise.data.success === 1) {
         // Store user in cache
         window.localStorage['user_id'] = sendData["user_id"];
-        window.localStorage['name'] = data.user.name;
+        window.localStorage['name'] = promise.data.user.name;
 
         // Go to global feed
         $state.go('tab.feed');
-      } else {
-        console.log(data.error_msg);
-        var welcomePopup = $ionicPopup.alert({
-          title : "Login failure",
-          subTitle: data.error_msg
-        });
       }
-    })
-    .error(function(data, status, headers, config) {
-      console.log('error');
     });
   }
 
   $scope.anon = function() {
-     var random = Math.random().toString(36).substring(3);
-     var sendData = {'tag':"register", 'user_id':random, 'password':"", 'name':random};
-    $http.post(url, sendData)
-    .success(function(data, status, headers, config) {
-      console.log(data);
-      if (data.success === 1) {
-        console.log("login complete");
+    var random = Math.random().toString(36).substring(3);
+    var sendData = {'tag':"register", 'user_id':random, 'password':"", 'name':random};
 
+    DBService.sendToDB(sendData, true).then(function(promise) {        
+      if (promise.data.success === 1) {
         // Store user in cache
         window.localStorage['user_id'] = random;
         window.localStorage['name'] = random;
 
         // Go to global feed
         $state.go('tab.feed');
-      } else {
-        console.log(data.error_msg);
-        var welcomePopup = $ionicPopup.alert({
-          title : "Login failure",
-          subTitle: data.error_msg
-        });
       }
-    })
-    .error(function(data, status, headers, config) {
-      console.log('error');
     });
   }
 })
@@ -81,7 +55,7 @@ angular.module('starter.controllers', ['ngCordova'])
 // ##################################################################
 
 // Controller for register.html
-.controller('RegisterCtrl', function($scope, $http, $ionicPopup, $state, $cordovaProgress) {
+.controller('RegisterCtrl', function($scope, $ionicPopup, $state, $cordovaProgress, DBService) {
   // Create javascript object to get user parameters
   $scope.user = {};
 
@@ -89,54 +63,36 @@ angular.module('starter.controllers', ['ngCordova'])
   $scope.register = function() {
     var sendData = {'tag':"register", 'user_id':$scope.user.username, 'password':$scope.user.password, 'name':$scope.user.name};
 
-    if (ionic.Platform.isIOS()) {
-      $cordovaProgress.showSimple(true);
-    }
+    // if (ionic.Platform.isIOS()) {
+    //   $cordovaProgress.showSimple(true);
+    // }
 
-    $http.post(url, sendData)
-    .success(function(data, status, headers, config) {
-      console.log(data);
+    DBService.sendToDB(sendData, true).then(function(promise) {
+      // if (ionic.Platform.isIOS()) {
+      //   $cordovaProgress.hide();
+      // }
 
-      if (ionic.Platform.isIOS()) {
-        $cordovaProgress.hide();
-      }      
-
-      if (data.success === 1) {
-        console.log("registration complete");
-
+      if (promise.data.success === 1) {
         // Store user in cache
         window.localStorage['user_id'] = sendData["user_id"];
         window.localStorage['name'] = sendData["name"];
 
         // Display welcome message
-        var welcomePopup = $ionicPopup.alert({
+        $ionicPopup.alert({
           title : "Registration complete!",
           subTitle: "Welcome "+sendData["name"]+"!"
         }).then(function(res) {
           $state.go('tab.feed');
         });
-      } else {
-        console.log(data.error_msg);
-        var welcomePopup = $ionicPopup.alert({
-          title : "Registration failure",
-          subTitle: data.error_msg
-        });        
       }
-    })
-    .error(function(data, status, headers, config) {
-      console.log('error');
     });
   }
 })
 
 // ##################################################################
 
-.controller('FeedCtrl', function($scope) {})
-
-// ##################################################################
-
 // Controller for tab-feed-global.html
-.controller('GlobalFeedCtrl', function($scope, $http, $ionicPopup) {
+.controller('GlobalFeedCtrl', function($scope, DBService) {
   var sendData = {'tag':'getFeed', 'user_id':window.localStorage['user_id']};
 
   // Update feed when user enters scene
@@ -144,23 +100,14 @@ angular.module('starter.controllers', ['ngCordova'])
     $scope.doRefresh();
   });
 
-
   // Update feed from database
   $scope.doRefresh = function() {
-    $http.post(url, sendData)
-    .success(function(data, status, headers, config) {
-      console.log(data);
-      if (data.success === 1) {
-        $scope.feed = data.feed;
-        window.localStorage.setItem("feed", JSON.stringify(data.feed)); // Not doing anything with the data?
-      } else {
-        console.log(data.error_msg); 
+    DBService.sendToDB(sendData, false).then(function(promise) {
+      if (promise.data.success === 1) {
+        $scope.feed = promise.data.feed;
+        window.localStorage.setItem("feed", JSON.stringify(promise.data.feed)); // Not doing anything with the data?
       }
-    })
-    .error(function(data, status, headers, config) {
-      console.log('error');
-    })
-    .finally(function() {
+    }).finally(function() {
       // Stop the ion-refresher from spinning
       $scope.$broadcast('scroll.refreshComplete');
     });
@@ -170,7 +117,7 @@ angular.module('starter.controllers', ['ngCordova'])
 // ##################################################################
 
 // Controller for tab-feed-friends.html
-.controller('FriendsFeedCtrl', function($scope, $http, $ionicPopup) {
+.controller('FriendsFeedCtrl', function($scope, DBService) {
   var sendData = {'tag':'getFriendFeed', 'user_id':window.localStorage['user_id']};
 
   // Update feed when user enters scene
@@ -180,20 +127,12 @@ angular.module('starter.controllers', ['ngCordova'])
 
   // Update feed from database
   $scope.doRefresh = function() {
-    $http.post(url, sendData)
-    .success(function(data, status, headers, config) {
-      console.log(data);
-      if (data.success === 1) {
-        $scope.feed = data.feed;
-        window.localStorage.setItem("feed", JSON.stringify(data.feed)); // Not doing anything with the data?
-      } else {
-        console.log(data.error_msg); 
+    DBService.sendToDB(sendData, false).then(function(promise) {
+      if (promise.data.success === 1) {
+        $scope.feed = promise.data.feed;
+        // window.localStorage.setItem("feed", JSON.stringify(promise.data.feed)); // Not doing anything with the data?
       }
-    })
-    .error(function(data, status, headers, config) {
-      console.log('error');
-    })
-    .finally(function() {
+    }).finally(function() {
       // Stop the ion-refresher from spinning
       $scope.$broadcast('scroll.refreshComplete');
     });
@@ -203,26 +142,10 @@ angular.module('starter.controllers', ['ngCordova'])
 // ##################################################################
 
 // Controller for tab-nearby.html
-.controller('NearbyCtrl', function($scope, $state, $http, $cordovaGeolocation, $ionicLoading, $compile) {
+.controller('NearbyCtrl', function($scope, $state, $cordovaGeolocation, $ionicLoading) {
 
   // Update feed when user enters scene
   $scope.$on('$ionicView.beforeEnter', function() {
-    var sendData = {'tag':"getFeed", 'user_id':window.localStorage['user_id']};
-
-    $http.post(url, sendData)
-    .success(function(data, status, headers, config) {
-      console.log(data);
-      if (data.success === 1) {
-        $scope.feed = data.feed;
-        window.localStorage.setItem("feed", JSON.stringify(data.feed));
-      } else {
-        console.log(data.error_msg);   
-      }
-    })
-    .error(function(data, status, headers, config) {
-      console.log('error');
-    });
-
     var options = {timeout: 10000, enableHighAccuracy: true};
     $cordovaGeolocation.getCurrentPosition(options).then(
       function(position) {
@@ -234,15 +157,10 @@ angular.module('starter.controllers', ['ngCordova'])
           mapTypeId: google.maps.MapTypeId.ROADMAP
         };
         var map = new google.maps.Map(document.getElementById("map"),mapOptions);
-       
-        //Marker + infowindow + angularjs compiled ng-click
-        var contentString = "<div><a ng-click='clickTest()'>Click me!</a></div>";
-        var compiled = $compile(contentString)($scope);
 
         if (window.localStorage['feed']) {
           var feed = JSON.parse(window.localStorage['feed']);
           var marker = [];
-          var infowindow = [];
 
     			for(var i = 0; i < feed.length; i++) {
     				var tempPos = feed[i].location.split(",");
@@ -263,22 +181,20 @@ angular.module('starter.controllers', ['ngCordova'])
     );
   
     $scope.centerOnMe = function() {
-        if(!$scope.map) {
-            return;
-        }
-        $scope.loading = $ionicLoading.show({
-          content: 'Getting current location...',
-          showBackdrop: false
-        });
-        navigator.geolocation.getCurrentPosition(function(pos) {
-          $scope.map.setCenter(new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude));
-          $scope.loading.hide();
-        }, function(error) {
-          alert('Unable to get location: ' + error.message);
-        });
-    };
-    $scope.clickTest = function() {
-      alert('asdasd')
+      if(!$scope.map) {
+        return;
+      }
+
+      $scope.loading = $ionicLoading.show({
+        content: 'Getting current location...',
+        showBackdrop: false
+      });
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        $scope.map.setCenter(new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude));
+        $scope.loading.hide();
+      }, function(error) {
+        alert('Unable to get location: ' + error.message);
+      });
     };
 	});
 })
@@ -290,7 +206,7 @@ angular.module('starter.controllers', ['ngCordova'])
 
   // Update feed when user enters scene
   $scope.$on('$ionicView.beforeEnter', function() {
-    if(window.localStorage['poops'] == undefined) {  // Needs to be re-written to target real database
+    if(window.localStorage['poops'] == undefined) {  // Needs to be re-written to target actual database
       $http.get('http://tolva.nu/poop/getPoops.php')
       .success(function(data) {
         $scope.poops = data;
@@ -313,7 +229,7 @@ angular.module('starter.controllers', ['ngCordova'])
 // ##################################################################
 
 // Controller for tab-add-detail.html
-.controller('AddDetailCtrl', function($scope, $stateParams, $http, $state, $cordovaGeolocation, $ionicHistory) {
+.controller('AddDetailCtrl', function($scope, $stateParams, $state, $cordovaGeolocation, $ionicHistory, DBService) {
 
   // Store in-parameter of poop type
   $scope.type = $stateParams.type;
@@ -333,29 +249,15 @@ angular.module('starter.controllers', ['ngCordova'])
   $scope.add.comment = "";
   
   // Update slider value when dragging
-  $scope.$watch('add.rangeValue',function(val,old){
-     $scope.add.rangeValue = parseInt(val);
+  $scope.$watch('add.rangeValue',function(newVal, oldVal){
+     $scope.add.rangeValue = parseInt(newVal);
   });
-  
 
   // Add new poop event to database
   $scope.addToDatabase = function(type) {
     var sendData = {'tag':"addPoop", 'user_id':window.localStorage['user_id'], 'type':type, 'comment':$scope.add.comment, 'location':lat+","+longi, 'rate':$scope.add.rangeValue};
 
-    $http.post(url, sendData)
-    .success(function(data, status, headers, config) {
-      console.log(data);
-      if (data.success !== 1) {
-        console.log(data.error_msg);
-        var welcomePopup = $ionicPopup.alert({
-          title : "Error",
-          subTitle: data.error_msg
-        });
-      }
-    })
-    .error(function(data, status, headers, config) {
-      console.log('error');
-    }); 
+    DBService.sendToDB(sendData, false).then(function(promise) {});
 
     // Back out from inner view
     $ionicHistory.goBack();
@@ -370,7 +272,7 @@ angular.module('starter.controllers', ['ngCordova'])
 // ##################################################################
 
 // Controller for tab-friends.html
-.controller('FriendsCtrl', function($scope, $http, $ionicPopup, $ionicListDelegate, $state) {
+.controller('FriendsCtrl', function($scope, $http, $ionicPopup, $ionicListDelegate, $state, DBService) {
   // Update feed when user enters scene
   $scope.$on('$ionicView.beforeEnter', function() {
     $scope.displayFriends();
@@ -385,21 +287,15 @@ angular.module('starter.controllers', ['ngCordova'])
 
     $scope.message = "No users to display. Try search for one!";
 
-    $http.post(url, sendData)
-    .success(function(data, status, headers, config) {
-      console.log(data);
-      if (data.success === 1) {
-        $scope.friends = data.friends;
+    DBService.sendToDB(sendData, true).then(function(promise) {
+      if (promise.data.success === 1) {
+        $scope.friends = promise.data.friends;
         $("#noFriends").css({"display": "none"});
       } else {
-        console.log(data.error_msg);
         $scope.friends = {};
-        $("#noFriends").css({"display": "block"});
+        $("#noFriends").css({"display": "block"});        
       }
-    })
-    .error(function(data, status, headers, config) {
-      console.log('error');
-    });    
+    });   
   }
 
 
