@@ -265,7 +265,7 @@ angular.module('starter.controllers', ['ngCordova'])
     setTimeout(function(){
       // Go to feed
       $state.go('tab.feed');
-    }, 100);
+    }, 250);
   };
 })
 
