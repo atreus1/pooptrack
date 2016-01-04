@@ -1,1979 +1,2621 @@
-// Platform: android
-// 2c29e187e4206a6a77fba940ef6f77aef5c7eb8c
-/*
- Licensed to the Apache Software Foundation (ASF) under one
- or more contributor license agreements.  See the NOTICE file
- distributed with this work for additional information
- regarding copyright ownership.  The ASF licenses this file
- to you under the Apache License, Version 2.0 (the
- "License"); you may not use this file except in compliance
- with the License.  You may obtain a copy of the License at
- 
-     http://www.apache.org/licenses/LICENSE-2.0
- 
- Unless required by applicable law or agreed to in writing,
- software distributed under the License is distributed on an
- "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- KIND, either express or implied.  See the License for the
- specific language governing permissions and limitations
- under the License.
-*/
-;(function() {
-var PLATFORM_VERSION_BUILD_LABEL = '4.1.1';
-// file: src/scripts/require.js
-
-/*jshint -W079 */
-/*jshint -W020 */
-
-var require,
-    define;
-
-(function () {
-    var modules = {},
-    // Stack of moduleIds currently being built.
-        requireStack = [],
-    // Map of module ID -> index into requireStack of modules currently being built.
-        inProgressModules = {},
-        SEPARATOR = ".";
-
-
-
-    function build(module) {
-        var factory = module.factory,
-            localRequire = function (id) {
-                var resultantId = id;
-                //Its a relative path, so lop off the last portion and add the id (minus "./")
-                if (id.charAt(0) === ".") {
-                    resultantId = module.id.slice(0, module.id.lastIndexOf(SEPARATOR)) + SEPARATOR + id.slice(2);
-                }
-                return require(resultantId);
-            };
-        module.exports = {};
-        delete module.factory;
-        factory(localRequire, module.exports, module);
-        return module.exports;
-    }
-
-    require = function (id) {
-        if (!modules[id]) {
-            throw "module " + id + " not found";
-        } else if (id in inProgressModules) {
-            var cycle = requireStack.slice(inProgressModules[id]).join('->') + '->' + id;
-            throw "Cycle in require graph: " + cycle;
-        }
-        if (modules[id].factory) {
-            try {
-                inProgressModules[id] = requireStack.length;
-                requireStack.push(id);
-                return build(modules[id]);
-            } finally {
-                delete inProgressModules[id];
-                requireStack.pop();
-            }
-        }
-        return modules[id].exports;
-    };
-
-    define = function (id, factory) {
-        if (modules[id]) {
-            throw "module " + id + " already defined";
-        }
-
-        modules[id] = {
-            id: id,
-            factory: factory
-        };
-    };
-
-    define.remove = function (id) {
-        delete modules[id];
-    };
-
-    define.moduleMap = modules;
-})();
-
-//Export for use in node
-if (typeof module === "object" && typeof require === "function") {
-    module.exports.require = require;
-    module.exports.define = define;
-}
-
-// file: src/cordova.js
-define("cordova", function(require, exports, module) {
-
-if(window.cordova){
-    throw new Error("cordova already defined");
-}
-
-
-var channel = require('cordova/channel');
-var platform = require('cordova/platform');
-
-
-/**
- * Intercept calls to addEventListener + removeEventListener and handle deviceready,
- * resume, and pause events.
- */
-var m_document_addEventListener = document.addEventListener;
-var m_document_removeEventListener = document.removeEventListener;
-var m_window_addEventListener = window.addEventListener;
-var m_window_removeEventListener = window.removeEventListener;
-
-/**
- * Houses custom event handlers to intercept on document + window event listeners.
- */
-var documentEventHandlers = {},
-    windowEventHandlers = {};
-
-document.addEventListener = function(evt, handler, capture) {
-    var e = evt.toLowerCase();
-    if (typeof documentEventHandlers[e] != 'undefined') {
-        documentEventHandlers[e].subscribe(handler);
-    } else {
-        m_document_addEventListener.call(document, evt, handler, capture);
-    }
-};
-
-window.addEventListener = function(evt, handler, capture) {
-    var e = evt.toLowerCase();
-    if (typeof windowEventHandlers[e] != 'undefined') {
-        windowEventHandlers[e].subscribe(handler);
-    } else {
-        m_window_addEventListener.call(window, evt, handler, capture);
-    }
-};
-
-document.removeEventListener = function(evt, handler, capture) {
-    var e = evt.toLowerCase();
-    // If unsubscribing from an event that is handled by a plugin
-    if (typeof documentEventHandlers[e] != "undefined") {
-        documentEventHandlers[e].unsubscribe(handler);
-    } else {
-        m_document_removeEventListener.call(document, evt, handler, capture);
-    }
-};
-
-window.removeEventListener = function(evt, handler, capture) {
-    var e = evt.toLowerCase();
-    // If unsubscribing from an event that is handled by a plugin
-    if (typeof windowEventHandlers[e] != "undefined") {
-        windowEventHandlers[e].unsubscribe(handler);
-    } else {
-        m_window_removeEventListener.call(window, evt, handler, capture);
-    }
-};
-
-function createEvent(type, data) {
-    var event = document.createEvent('Events');
-    event.initEvent(type, false, false);
-    if (data) {
-        for (var i in data) {
-            if (data.hasOwnProperty(i)) {
-                event[i] = data[i];
-            }
-        }
-    }
-    return event;
-}
-
-
-var cordova = {
-    define:define,
-    require:require,
-    version:PLATFORM_VERSION_BUILD_LABEL,
-    platformVersion:PLATFORM_VERSION_BUILD_LABEL,
-    platformId:platform.id,
-    /**
-     * Methods to add/remove your own addEventListener hijacking on document + window.
-     */
-    addWindowEventHandler:function(event) {
-        return (windowEventHandlers[event] = channel.create(event));
-    },
-    addStickyDocumentEventHandler:function(event) {
-        return (documentEventHandlers[event] = channel.createSticky(event));
-    },
-    addDocumentEventHandler:function(event) {
-        return (documentEventHandlers[event] = channel.create(event));
-    },
-    removeWindowEventHandler:function(event) {
-        delete windowEventHandlers[event];
-    },
-    removeDocumentEventHandler:function(event) {
-        delete documentEventHandlers[event];
-    },
-    /**
-     * Retrieve original event handlers that were replaced by Cordova
-     *
-     * @return object
-     */
-    getOriginalHandlers: function() {
-        return {'document': {'addEventListener': m_document_addEventListener, 'removeEventListener': m_document_removeEventListener},
-        'window': {'addEventListener': m_window_addEventListener, 'removeEventListener': m_window_removeEventListener}};
-    },
-    /**
-     * Method to fire event from native code
-     * bNoDetach is required for events which cause an exception which needs to be caught in native code
-     */
-    fireDocumentEvent: function(type, data, bNoDetach) {
-        var evt = createEvent(type, data);
-        if (typeof documentEventHandlers[type] != 'undefined') {
-            if( bNoDetach ) {
-                documentEventHandlers[type].fire(evt);
-            }
-            else {
-                setTimeout(function() {
-                    // Fire deviceready on listeners that were registered before cordova.js was loaded.
-                    if (type == 'deviceready') {
-                        document.dispatchEvent(evt);
-                    }
-                    documentEventHandlers[type].fire(evt);
-                }, 0);
-            }
-        } else {
-            document.dispatchEvent(evt);
-        }
-    },
-    fireWindowEvent: function(type, data) {
-        var evt = createEvent(type,data);
-        if (typeof windowEventHandlers[type] != 'undefined') {
-            setTimeout(function() {
-                windowEventHandlers[type].fire(evt);
-            }, 0);
-        } else {
-            window.dispatchEvent(evt);
-        }
-    },
-
-    /**
-     * Plugin callback mechanism.
-     */
-    // Randomize the starting callbackId to avoid collisions after refreshing or navigating.
-    // This way, it's very unlikely that any new callback would get the same callbackId as an old callback.
-    callbackId: Math.floor(Math.random() * 2000000000),
-    callbacks:  {},
-    callbackStatus: {
-        NO_RESULT: 0,
-        OK: 1,
-        CLASS_NOT_FOUND_EXCEPTION: 2,
-        ILLEGAL_ACCESS_EXCEPTION: 3,
-        INSTANTIATION_EXCEPTION: 4,
-        MALFORMED_URL_EXCEPTION: 5,
-        IO_EXCEPTION: 6,
-        INVALID_ACTION: 7,
-        JSON_EXCEPTION: 8,
-        ERROR: 9
-    },
-
-    /**
-     * Called by native code when returning successful result from an action.
-     */
-    callbackSuccess: function(callbackId, args) {
-        cordova.callbackFromNative(callbackId, true, args.status, [args.message], args.keepCallback);
-    },
-
-    /**
-     * Called by native code when returning error result from an action.
-     */
-    callbackError: function(callbackId, args) {
-        // TODO: Deprecate callbackSuccess and callbackError in favour of callbackFromNative.
-        // Derive success from status.
-        cordova.callbackFromNative(callbackId, false, args.status, [args.message], args.keepCallback);
-    },
-
-    /**
-     * Called by native code when returning the result from an action.
-     */
-    callbackFromNative: function(callbackId, isSuccess, status, args, keepCallback) {
-        try {
-            var callback = cordova.callbacks[callbackId];
-            if (callback) {
-                if (isSuccess && status == cordova.callbackStatus.OK) {
-                    callback.success && callback.success.apply(null, args);
-                } else if (!isSuccess) {
-                    callback.fail && callback.fail.apply(null, args);
-                }
-                /*
-                else
-                    Note, this case is intentionally not caught.
-                    this can happen if isSuccess is true, but callbackStatus is NO_RESULT
-                    which is used to remove a callback from the list without calling the callbacks
-                    typically keepCallback is false in this case
-                */
-                // Clear callback if not expecting any more results
-                if (!keepCallback) {
-                    delete cordova.callbacks[callbackId];
-                }
-            }
-        }
-        catch (err) {
-            var msg = "Error in " + (isSuccess ? "Success" : "Error") + " callbackId: " + callbackId + " : " + err;
-            console && console.log && console.log(msg);
-            cordova.fireWindowEvent("cordovacallbackerror", { 'message': msg });
-            throw err;
-        }
-    },
-    addConstructor: function(func) {
-        channel.onCordovaReady.subscribe(function() {
-            try {
-                func();
-            } catch(e) {
-                console.log("Failed to run constructor: " + e);
-            }
-        });
-    }
-};
-
-
-module.exports = cordova;
-
-});
-
-// file: /Users/steveng/repo/cordova/cordova-android/cordova-js-src/android/nativeapiprovider.js
-define("cordova/android/nativeapiprovider", function(require, exports, module) {
-
-/**
- * Exports the ExposedJsApi.java object if available, otherwise exports the PromptBasedNativeApi.
- */
-
-var nativeApi = this._cordovaNative || require('cordova/android/promptbasednativeapi');
-var currentApi = nativeApi;
-
-module.exports = {
-    get: function() { return currentApi; },
-    setPreferPrompt: function(value) {
-        currentApi = value ? require('cordova/android/promptbasednativeapi') : nativeApi;
-    },
-    // Used only by tests.
-    set: function(value) {
-        currentApi = value;
-    }
-};
-
-});
-
-// file: /Users/steveng/repo/cordova/cordova-android/cordova-js-src/android/promptbasednativeapi.js
-define("cordova/android/promptbasednativeapi", function(require, exports, module) {
-
-/**
- * Implements the API of ExposedJsApi.java, but uses prompt() to communicate.
- * This is used pre-JellyBean, where addJavascriptInterface() is disabled.
- */
-
-module.exports = {
-    exec: function(bridgeSecret, service, action, callbackId, argsJson) {
-        return prompt(argsJson, 'gap:'+JSON.stringify([bridgeSecret, service, action, callbackId]));
-    },
-    setNativeToJsBridgeMode: function(bridgeSecret, value) {
-        prompt(value, 'gap_bridge_mode:' + bridgeSecret);
-    },
-    retrieveJsMessages: function(bridgeSecret, fromOnlineEvent) {
-        return prompt(+fromOnlineEvent, 'gap_poll:' + bridgeSecret);
-    }
-};
-
-});
-
-// file: src/common/argscheck.js
-define("cordova/argscheck", function(require, exports, module) {
-
-var utils = require('cordova/utils');
-
-var moduleExports = module.exports;
-
-var typeMap = {
-    'A': 'Array',
-    'D': 'Date',
-    'N': 'Number',
-    'S': 'String',
-    'F': 'Function',
-    'O': 'Object'
-};
-
-function extractParamName(callee, argIndex) {
-    return (/.*?\((.*?)\)/).exec(callee)[1].split(', ')[argIndex];
-}
-
-function checkArgs(spec, functionName, args, opt_callee) {
-    if (!moduleExports.enableChecks) {
-        return;
-    }
-    var errMsg = null;
-    var typeName;
-    for (var i = 0; i < spec.length; ++i) {
-        var c = spec.charAt(i),
-            cUpper = c.toUpperCase(),
-            arg = args[i];
-        // Asterix means allow anything.
-        if (c == '*') {
-            continue;
-        }
-        typeName = utils.typeName(arg);
-        if ((arg === null || arg === undefined) && c == cUpper) {
-            continue;
-        }
-        if (typeName != typeMap[cUpper]) {
-            errMsg = 'Expected ' + typeMap[cUpper];
-            break;
-        }
-    }
-    if (errMsg) {
-        errMsg += ', but got ' + typeName + '.';
-        errMsg = 'Wrong type for parameter "' + extractParamName(opt_callee || args.callee, i) + '" of ' + functionName + ': ' + errMsg;
-        // Don't log when running unit tests.
-        if (typeof jasmine == 'undefined') {
-            console.error(errMsg);
-        }
-        throw TypeError(errMsg);
-    }
-}
-
-function getValue(value, defaultValue) {
-    return value === undefined ? defaultValue : value;
-}
-
-moduleExports.checkArgs = checkArgs;
-moduleExports.getValue = getValue;
-moduleExports.enableChecks = true;
-
-
-});
-
-// file: src/common/base64.js
-define("cordova/base64", function(require, exports, module) {
-
-var base64 = exports;
-
-base64.fromArrayBuffer = function(arrayBuffer) {
-    var array = new Uint8Array(arrayBuffer);
-    return uint8ToBase64(array);
-};
-
-base64.toArrayBuffer = function(str) {
-    var decodedStr = typeof atob != 'undefined' ? atob(str) : new Buffer(str,'base64').toString('binary');
-    var arrayBuffer = new ArrayBuffer(decodedStr.length);
-    var array = new Uint8Array(arrayBuffer);
-    for (var i=0, len=decodedStr.length; i < len; i++) {
-        array[i] = decodedStr.charCodeAt(i);
-    }
-    return arrayBuffer;
-};
-
-//------------------------------------------------------------------------------
-
-/* This code is based on the performance tests at http://jsperf.com/b64tests
- * This 12-bit-at-a-time algorithm was the best performing version on all
- * platforms tested.
- */
-
-var b64_6bit = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-var b64_12bit;
-
-var b64_12bitTable = function() {
-    b64_12bit = [];
-    for (var i=0; i<64; i++) {
-        for (var j=0; j<64; j++) {
-            b64_12bit[i*64+j] = b64_6bit[i] + b64_6bit[j];
-        }
-    }
-    b64_12bitTable = function() { return b64_12bit; };
-    return b64_12bit;
-};
-
-function uint8ToBase64(rawData) {
-    var numBytes = rawData.byteLength;
-    var output="";
-    var segment;
-    var table = b64_12bitTable();
-    for (var i=0;i<numBytes-2;i+=3) {
-        segment = (rawData[i] << 16) + (rawData[i+1] << 8) + rawData[i+2];
-        output += table[segment >> 12];
-        output += table[segment & 0xfff];
-    }
-    if (numBytes - i == 2) {
-        segment = (rawData[i] << 16) + (rawData[i+1] << 8);
-        output += table[segment >> 12];
-        output += b64_6bit[(segment & 0xfff) >> 6];
-        output += '=';
-    } else if (numBytes - i == 1) {
-        segment = (rawData[i] << 16);
-        output += table[segment >> 12];
-        output += '==';
-    }
-    return output;
-}
-
-});
-
-// file: src/common/builder.js
-define("cordova/builder", function(require, exports, module) {
-
-var utils = require('cordova/utils');
-
-function each(objects, func, context) {
-    for (var prop in objects) {
-        if (objects.hasOwnProperty(prop)) {
-            func.apply(context, [objects[prop], prop]);
-        }
-    }
-}
-
-function clobber(obj, key, value) {
-    exports.replaceHookForTesting(obj, key);
-    var needsProperty = false;
-    try {
-        obj[key] = value;
-    } catch (e) {
-        needsProperty = true;
-    }
-    // Getters can only be overridden by getters.
-    if (needsProperty || obj[key] !== value) {
-        utils.defineGetter(obj, key, function() {
-            return value;
-        });
-    }
-}
-
-function assignOrWrapInDeprecateGetter(obj, key, value, message) {
-    if (message) {
-        utils.defineGetter(obj, key, function() {
-            console.log(message);
-            delete obj[key];
-            clobber(obj, key, value);
-            return value;
-        });
-    } else {
-        clobber(obj, key, value);
-    }
-}
-
-function include(parent, objects, clobber, merge) {
-    each(objects, function (obj, key) {
-        try {
-            var result = obj.path ? require(obj.path) : {};
-
-            if (clobber) {
-                // Clobber if it doesn't exist.
-                if (typeof parent[key] === 'undefined') {
-                    assignOrWrapInDeprecateGetter(parent, key, result, obj.deprecated);
-                } else if (typeof obj.path !== 'undefined') {
-                    // If merging, merge properties onto parent, otherwise, clobber.
-                    if (merge) {
-                        recursiveMerge(parent[key], result);
-                    } else {
-                        assignOrWrapInDeprecateGetter(parent, key, result, obj.deprecated);
-                    }
-                }
-                result = parent[key];
-            } else {
-                // Overwrite if not currently defined.
-                if (typeof parent[key] == 'undefined') {
-                    assignOrWrapInDeprecateGetter(parent, key, result, obj.deprecated);
-                } else {
-                    // Set result to what already exists, so we can build children into it if they exist.
-                    result = parent[key];
-                }
-            }
-
-            if (obj.children) {
-                include(result, obj.children, clobber, merge);
-            }
-        } catch(e) {
-            utils.alert('Exception building Cordova JS globals: ' + e + ' for key "' + key + '"');
-        }
-    });
-}
-
-/**
- * Merge properties from one object onto another recursively.  Properties from
- * the src object will overwrite existing target property.
- *
- * @param target Object to merge properties into.
- * @param src Object to merge properties from.
- */
-function recursiveMerge(target, src) {
-    for (var prop in src) {
-        if (src.hasOwnProperty(prop)) {
-            if (target.prototype && target.prototype.constructor === target) {
-                // If the target object is a constructor override off prototype.
-                clobber(target.prototype, prop, src[prop]);
-            } else {
-                if (typeof src[prop] === 'object' && typeof target[prop] === 'object') {
-                    recursiveMerge(target[prop], src[prop]);
-                } else {
-                    clobber(target, prop, src[prop]);
-                }
-            }
-        }
-    }
-}
-
-exports.buildIntoButDoNotClobber = function(objects, target) {
-    include(target, objects, false, false);
-};
-exports.buildIntoAndClobber = function(objects, target) {
-    include(target, objects, true, false);
-};
-exports.buildIntoAndMerge = function(objects, target) {
-    include(target, objects, true, true);
-};
-exports.recursiveMerge = recursiveMerge;
-exports.assignOrWrapInDeprecateGetter = assignOrWrapInDeprecateGetter;
-exports.replaceHookForTesting = function() {};
-
-});
-
-// file: src/common/channel.js
-define("cordova/channel", function(require, exports, module) {
-
-var utils = require('cordova/utils'),
-    nextGuid = 1;
-
-/**
- * Custom pub-sub "channel" that can have functions subscribed to it
- * This object is used to define and control firing of events for
- * cordova initialization, as well as for custom events thereafter.
- *
- * The order of events during page load and Cordova startup is as follows:
- *
- * onDOMContentLoaded*         Internal event that is received when the web page is loaded and parsed.
- * onNativeReady*              Internal event that indicates the Cordova native side is ready.
- * onCordovaReady*             Internal event fired when all Cordova JavaScript objects have been created.
- * onDeviceReady*              User event fired to indicate that Cordova is ready
- * onResume                    User event fired to indicate a start/resume lifecycle event
- * onPause                     User event fired to indicate a pause lifecycle event
- *
- * The events marked with an * are sticky. Once they have fired, they will stay in the fired state.
- * All listeners that subscribe after the event is fired will be executed right away.
- *
- * The only Cordova events that user code should register for are:
- *      deviceready           Cordova native code is initialized and Cordova APIs can be called from JavaScript
- *      pause                 App has moved to background
- *      resume                App has returned to foreground
- *
- * Listeners can be registered as:
- *      document.addEventListener("deviceready", myDeviceReadyListener, false);
- *      document.addEventListener("resume", myResumeListener, false);
- *      document.addEventListener("pause", myPauseListener, false);
- *
- * The DOM lifecycle events should be used for saving and restoring state
- *      window.onload
- *      window.onunload
- *
- */
-
-/**
- * Channel
- * @constructor
- * @param type  String the channel name
- */
-var Channel = function(type, sticky) {
-    this.type = type;
-    // Map of guid -> function.
-    this.handlers = {};
-    // 0 = Non-sticky, 1 = Sticky non-fired, 2 = Sticky fired.
-    this.state = sticky ? 1 : 0;
-    // Used in sticky mode to remember args passed to fire().
-    this.fireArgs = null;
-    // Used by onHasSubscribersChange to know if there are any listeners.
-    this.numHandlers = 0;
-    // Function that is called when the first listener is subscribed, or when
-    // the last listener is unsubscribed.
-    this.onHasSubscribersChange = null;
-},
-    channel = {
-        /**
-         * Calls the provided function only after all of the channels specified
-         * have been fired. All channels must be sticky channels.
-         */
-        join: function(h, c) {
-            var len = c.length,
-                i = len,
-                f = function() {
-                    if (!(--i)) h();
-                };
-            for (var j=0; j<len; j++) {
-                if (c[j].state === 0) {
-                    throw Error('Can only use join with sticky channels.');
-                }
-                c[j].subscribe(f);
-            }
-            if (!len) h();
-        },
-        create: function(type) {
-            return channel[type] = new Channel(type, false);
-        },
-        createSticky: function(type) {
-            return channel[type] = new Channel(type, true);
-        },
-
-        /**
-         * cordova Channels that must fire before "deviceready" is fired.
-         */
-        deviceReadyChannelsArray: [],
-        deviceReadyChannelsMap: {},
-
-        /**
-         * Indicate that a feature needs to be initialized before it is ready to be used.
-         * This holds up Cordova's "deviceready" event until the feature has been initialized
-         * and Cordova.initComplete(feature) is called.
-         *
-         * @param feature {String}     The unique feature name
-         */
-        waitForInitialization: function(feature) {
-            if (feature) {
-                var c = channel[feature] || this.createSticky(feature);
-                this.deviceReadyChannelsMap[feature] = c;
-                this.deviceReadyChannelsArray.push(c);
-            }
-        },
-
-        /**
-         * Indicate that initialization code has completed and the feature is ready to be used.
-         *
-         * @param feature {String}     The unique feature name
-         */
-        initializationComplete: function(feature) {
-            var c = this.deviceReadyChannelsMap[feature];
-            if (c) {
-                c.fire();
-            }
-        }
-    };
-
-function forceFunction(f) {
-    if (typeof f != 'function') throw "Function required as first argument!";
-}
-
-/**
- * Subscribes the given function to the channel. Any time that
- * Channel.fire is called so too will the function.
- * Optionally specify an execution context for the function
- * and a guid that can be used to stop subscribing to the channel.
- * Returns the guid.
- */
-Channel.prototype.subscribe = function(f, c) {
-    // need a function to call
-    forceFunction(f);
-    if (this.state == 2) {
-        f.apply(c || this, this.fireArgs);
-        return;
-    }
-
-    var func = f,
-        guid = f.observer_guid;
-    if (typeof c == "object") { func = utils.close(c, f); }
-
-    if (!guid) {
-        // first time any channel has seen this subscriber
-        guid = '' + nextGuid++;
-    }
-    func.observer_guid = guid;
-    f.observer_guid = guid;
-
-    // Don't add the same handler more than once.
-    if (!this.handlers[guid]) {
-        this.handlers[guid] = func;
-        this.numHandlers++;
-        if (this.numHandlers == 1) {
-            this.onHasSubscribersChange && this.onHasSubscribersChange();
-        }
-    }
-};
-
-/**
- * Unsubscribes the function with the given guid from the channel.
- */
-Channel.prototype.unsubscribe = function(f) {
-    // need a function to unsubscribe
-    forceFunction(f);
-
-    var guid = f.observer_guid,
-        handler = this.handlers[guid];
-    if (handler) {
-        delete this.handlers[guid];
-        this.numHandlers--;
-        if (this.numHandlers === 0) {
-            this.onHasSubscribersChange && this.onHasSubscribersChange();
-        }
-    }
-};
-
-/**
- * Calls all functions subscribed to this channel.
- */
-Channel.prototype.fire = function(e) {
-    var fail = false,
-        fireArgs = Array.prototype.slice.call(arguments);
-    // Apply stickiness.
-    if (this.state == 1) {
-        this.state = 2;
-        this.fireArgs = fireArgs;
-    }
-    if (this.numHandlers) {
-        // Copy the values first so that it is safe to modify it from within
-        // callbacks.
-        var toCall = [];
-        for (var item in this.handlers) {
-            toCall.push(this.handlers[item]);
-        }
-        for (var i = 0; i < toCall.length; ++i) {
-            toCall[i].apply(this, fireArgs);
-        }
-        if (this.state == 2 && this.numHandlers) {
-            this.numHandlers = 0;
-            this.handlers = {};
-            this.onHasSubscribersChange && this.onHasSubscribersChange();
-        }
-    }
-};
-
-
-// defining them here so they are ready super fast!
-// DOM event that is received when the web page is loaded and parsed.
-channel.createSticky('onDOMContentLoaded');
-
-// Event to indicate the Cordova native side is ready.
-channel.createSticky('onNativeReady');
-
-// Event to indicate that all Cordova JavaScript objects have been created
-// and it's time to run plugin constructors.
-channel.createSticky('onCordovaReady');
-
-// Event to indicate that all automatically loaded JS plugins are loaded and ready.
-// FIXME remove this
-channel.createSticky('onPluginsReady');
-
-// Event to indicate that Cordova is ready
-channel.createSticky('onDeviceReady');
-
-// Event to indicate a resume lifecycle event
-channel.create('onResume');
-
-// Event to indicate a pause lifecycle event
-channel.create('onPause');
-
-// Channels that must fire before "deviceready" is fired.
-channel.waitForInitialization('onCordovaReady');
-channel.waitForInitialization('onDOMContentLoaded');
-
-module.exports = channel;
-
-});
-
-// file: /Users/steveng/repo/cordova/cordova-android/cordova-js-src/exec.js
-define("cordova/exec", function(require, exports, module) {
-
-/**
- * Execute a cordova command.  It is up to the native side whether this action
- * is synchronous or asynchronous.  The native side can return:
- *      Synchronous: PluginResult object as a JSON string
- *      Asynchronous: Empty string ""
- * If async, the native side will cordova.callbackSuccess or cordova.callbackError,
- * depending upon the result of the action.
- *
- * @param {Function} success    The success callback
- * @param {Function} fail       The fail callback
- * @param {String} service      The name of the service to use
- * @param {String} action       Action to be run in cordova
- * @param {String[]} [args]     Zero or more arguments to pass to the method
- */
-var cordova = require('cordova'),
-    nativeApiProvider = require('cordova/android/nativeapiprovider'),
-    utils = require('cordova/utils'),
-    base64 = require('cordova/base64'),
-    channel = require('cordova/channel'),
-    jsToNativeModes = {
-        PROMPT: 0,
-        JS_OBJECT: 1
-    },
-    nativeToJsModes = {
-        // Polls for messages using the JS->Native bridge.
-        POLLING: 0,
-        // For LOAD_URL to be viable, it would need to have a work-around for
-        // the bug where the soft-keyboard gets dismissed when a message is sent.
-        LOAD_URL: 1,
-        // For the ONLINE_EVENT to be viable, it would need to intercept all event
-        // listeners (both through addEventListener and window.ononline) as well
-        // as set the navigator property itself.
-        ONLINE_EVENT: 2
-    },
-    jsToNativeBridgeMode,  // Set lazily.
-    nativeToJsBridgeMode = nativeToJsModes.ONLINE_EVENT,
-    pollEnabled = false,
-    bridgeSecret = -1;
-
-var messagesFromNative = [];
-var isProcessing = false;
-var resolvedPromise = typeof Promise == 'undefined' ? null : Promise.resolve();
-var nextTick = resolvedPromise ? function(fn) { resolvedPromise.then(fn); } : function(fn) { setTimeout(fn); };
-
-function androidExec(success, fail, service, action, args) {
-    if (bridgeSecret < 0) {
-        // If we ever catch this firing, we'll need to queue up exec()s
-        // and fire them once we get a secret. For now, I don't think
-        // it's possible for exec() to be called since plugins are parsed but
-        // not run until until after onNativeReady.
-        throw new Error('exec() called without bridgeSecret');
-    }
-    // Set default bridge modes if they have not already been set.
-    // By default, we use the failsafe, since addJavascriptInterface breaks too often
-    if (jsToNativeBridgeMode === undefined) {
-        androidExec.setJsToNativeBridgeMode(jsToNativeModes.JS_OBJECT);
-    }
-
-    // Process any ArrayBuffers in the args into a string.
-    for (var i = 0; i < args.length; i++) {
-        if (utils.typeName(args[i]) == 'ArrayBuffer') {
-            args[i] = base64.fromArrayBuffer(args[i]);
-        }
-    }
-
-    var callbackId = service + cordova.callbackId++,
-        argsJson = JSON.stringify(args);
-
-    if (success || fail) {
-        cordova.callbacks[callbackId] = {success:success, fail:fail};
-    }
-
-    var msgs = nativeApiProvider.get().exec(bridgeSecret, service, action, callbackId, argsJson);
-    // If argsJson was received by Java as null, try again with the PROMPT bridge mode.
-    // This happens in rare circumstances, such as when certain Unicode characters are passed over the bridge on a Galaxy S2.  See CB-2666.
-    if (jsToNativeBridgeMode == jsToNativeModes.JS_OBJECT && msgs === "@Null arguments.") {
-        androidExec.setJsToNativeBridgeMode(jsToNativeModes.PROMPT);
-        androidExec(success, fail, service, action, args);
-        androidExec.setJsToNativeBridgeMode(jsToNativeModes.JS_OBJECT);
-    } else if (msgs) {
-        messagesFromNative.push(msgs);
-        // Always process async to avoid exceptions messing up stack.
-        nextTick(processMessages);
-    }
-}
-
-androidExec.init = function() {
-    bridgeSecret = +prompt('', 'gap_init:' + nativeToJsBridgeMode);
-    channel.onNativeReady.fire();
-};
-
-function pollOnceFromOnlineEvent() {
-    pollOnce(true);
-}
-
-function pollOnce(opt_fromOnlineEvent) {
-    if (bridgeSecret < 0) {
-        // This can happen when the NativeToJsMessageQueue resets the online state on page transitions.
-        // We know there's nothing to retrieve, so no need to poll.
-        return;
-    }
-    var msgs = nativeApiProvider.get().retrieveJsMessages(bridgeSecret, !!opt_fromOnlineEvent);
-    if (msgs) {
-        messagesFromNative.push(msgs);
-        // Process sync since we know we're already top-of-stack.
-        processMessages();
-    }
-}
-
-function pollingTimerFunc() {
-    if (pollEnabled) {
-        pollOnce();
-        setTimeout(pollingTimerFunc, 50);
-    }
-}
-
-function hookOnlineApis() {
-    function proxyEvent(e) {
-        cordova.fireWindowEvent(e.type);
-    }
-    // The network module takes care of firing online and offline events.
-    // It currently fires them only on document though, so we bridge them
-    // to window here (while first listening for exec()-releated online/offline
-    // events).
-    window.addEventListener('online', pollOnceFromOnlineEvent, false);
-    window.addEventListener('offline', pollOnceFromOnlineEvent, false);
-    cordova.addWindowEventHandler('online');
-    cordova.addWindowEventHandler('offline');
-    document.addEventListener('online', proxyEvent, false);
-    document.addEventListener('offline', proxyEvent, false);
-}
-
-hookOnlineApis();
-
-androidExec.jsToNativeModes = jsToNativeModes;
-androidExec.nativeToJsModes = nativeToJsModes;
-
-androidExec.setJsToNativeBridgeMode = function(mode) {
-    if (mode == jsToNativeModes.JS_OBJECT && !window._cordovaNative) {
-        mode = jsToNativeModes.PROMPT;
-    }
-    nativeApiProvider.setPreferPrompt(mode == jsToNativeModes.PROMPT);
-    jsToNativeBridgeMode = mode;
-};
-
-androidExec.setNativeToJsBridgeMode = function(mode) {
-    if (mode == nativeToJsBridgeMode) {
-        return;
-    }
-    if (nativeToJsBridgeMode == nativeToJsModes.POLLING) {
-        pollEnabled = false;
-    }
-
-    nativeToJsBridgeMode = mode;
-    // Tell the native side to switch modes.
-    // Otherwise, it will be set by androidExec.init()
-    if (bridgeSecret >= 0) {
-        nativeApiProvider.get().setNativeToJsBridgeMode(bridgeSecret, mode);
-    }
-
-    if (mode == nativeToJsModes.POLLING) {
-        pollEnabled = true;
-        setTimeout(pollingTimerFunc, 1);
-    }
-};
-
-function buildPayload(payload, message) {
-    var payloadKind = message.charAt(0);
-    if (payloadKind == 's') {
-        payload.push(message.slice(1));
-    } else if (payloadKind == 't') {
-        payload.push(true);
-    } else if (payloadKind == 'f') {
-        payload.push(false);
-    } else if (payloadKind == 'N') {
-        payload.push(null);
-    } else if (payloadKind == 'n') {
-        payload.push(+message.slice(1));
-    } else if (payloadKind == 'A') {
-        var data = message.slice(1);
-        payload.push(base64.toArrayBuffer(data));
-    } else if (payloadKind == 'S') {
-        payload.push(window.atob(message.slice(1)));
-    } else if (payloadKind == 'M') {
-        var multipartMessages = message.slice(1);
-        while (multipartMessages !== "") {
-            var spaceIdx = multipartMessages.indexOf(' ');
-            var msgLen = +multipartMessages.slice(0, spaceIdx);
-            var multipartMessage = multipartMessages.substr(spaceIdx + 1, msgLen);
-            multipartMessages = multipartMessages.slice(spaceIdx + msgLen + 1);
-            buildPayload(payload, multipartMessage);
-        }
-    } else {
-        payload.push(JSON.parse(message));
-    }
-}
-
-// Processes a single message, as encoded by NativeToJsMessageQueue.java.
-function processMessage(message) {
-    var firstChar = message.charAt(0);
-    if (firstChar == 'J') {
-        // This is deprecated on the .java side. It doesn't work with CSP enabled.
-        eval(message.slice(1));
-    } else if (firstChar == 'S' || firstChar == 'F') {
-        var success = firstChar == 'S';
-        var keepCallback = message.charAt(1) == '1';
-        var spaceIdx = message.indexOf(' ', 2);
-        var status = +message.slice(2, spaceIdx);
-        var nextSpaceIdx = message.indexOf(' ', spaceIdx + 1);
-        var callbackId = message.slice(spaceIdx + 1, nextSpaceIdx);
-        var payloadMessage = message.slice(nextSpaceIdx + 1);
-        var payload = [];
-        buildPayload(payload, payloadMessage);
-        cordova.callbackFromNative(callbackId, success, status, payload, keepCallback);
-    } else {
-        console.log("processMessage failed: invalid message: " + JSON.stringify(message));
-    }
-}
-
-function processMessages() {
-    // Check for the reentrant case.
-    if (isProcessing) {
-        return;
-    }
-    if (messagesFromNative.length === 0) {
-        return;
-    }
-    isProcessing = true;
-    try {
-        var msg = popMessageFromQueue();
-        // The Java side can send a * message to indicate that it
-        // still has messages waiting to be retrieved.
-        if (msg == '*' && messagesFromNative.length === 0) {
-            nextTick(pollOnce);
-            return;
-        }
-        processMessage(msg);
-    } finally {
-        isProcessing = false;
-        if (messagesFromNative.length > 0) {
-            nextTick(processMessages);
-        }
-    }
-}
-
-function popMessageFromQueue() {
-    var messageBatch = messagesFromNative.shift();
-    if (messageBatch == '*') {
-        return '*';
-    }
-
-    var spaceIdx = messageBatch.indexOf(' ');
-    var msgLen = +messageBatch.slice(0, spaceIdx);
-    var message = messageBatch.substr(spaceIdx + 1, msgLen);
-    messageBatch = messageBatch.slice(spaceIdx + msgLen + 1);
-    if (messageBatch) {
-        messagesFromNative.unshift(messageBatch);
-    }
-    return message;
-}
-
-module.exports = androidExec;
-
-});
-
-// file: src/common/exec/proxy.js
-define("cordova/exec/proxy", function(require, exports, module) {
-
-
-// internal map of proxy function
-var CommandProxyMap = {};
-
-module.exports = {
-
-    // example: cordova.commandProxy.add("Accelerometer",{getCurrentAcceleration: function(successCallback, errorCallback, options) {...},...);
-    add:function(id,proxyObj) {
-        console.log("adding proxy for " + id);
-        CommandProxyMap[id] = proxyObj;
-        return proxyObj;
-    },
-
-    // cordova.commandProxy.remove("Accelerometer");
-    remove:function(id) {
-        var proxy = CommandProxyMap[id];
-        delete CommandProxyMap[id];
-        CommandProxyMap[id] = null;
-        return proxy;
-    },
-
-    get:function(service,action) {
-        return ( CommandProxyMap[service] ? CommandProxyMap[service][action] : null );
-    }
-};
-});
-
-// file: src/common/init.js
-define("cordova/init", function(require, exports, module) {
-
-var channel = require('cordova/channel');
-var cordova = require('cordova');
-var modulemapper = require('cordova/modulemapper');
-var platform = require('cordova/platform');
-var pluginloader = require('cordova/pluginloader');
-var utils = require('cordova/utils');
-
-var platformInitChannelsArray = [channel.onNativeReady, channel.onPluginsReady];
-
-function logUnfiredChannels(arr) {
-    for (var i = 0; i < arr.length; ++i) {
-        if (arr[i].state != 2) {
-            console.log('Channel not fired: ' + arr[i].type);
-        }
-    }
-}
-
-window.setTimeout(function() {
-    if (channel.onDeviceReady.state != 2) {
-        console.log('deviceready has not fired after 5 seconds.');
-        logUnfiredChannels(platformInitChannelsArray);
-        logUnfiredChannels(channel.deviceReadyChannelsArray);
-    }
-}, 5000);
-
-// Replace navigator before any modules are required(), to ensure it happens as soon as possible.
-// We replace it so that properties that can't be clobbered can instead be overridden.
-function replaceNavigator(origNavigator) {
-    var CordovaNavigator = function() {};
-    CordovaNavigator.prototype = origNavigator;
-    var newNavigator = new CordovaNavigator();
-    // This work-around really only applies to new APIs that are newer than Function.bind.
-    // Without it, APIs such as getGamepads() break.
-    if (CordovaNavigator.bind) {
-        for (var key in origNavigator) {
-            if (typeof origNavigator[key] == 'function') {
-                newNavigator[key] = origNavigator[key].bind(origNavigator);
-            }
-            else {
-                (function(k) {
-                    utils.defineGetterSetter(newNavigator,key,function() {
-                        return origNavigator[k];
-                    });
-                })(key);
-            }
-        }
-    }
-    return newNavigator;
-}
-
-if (window.navigator) {
-    window.navigator = replaceNavigator(window.navigator);
-}
-
-if (!window.console) {
-    window.console = {
-        log: function(){}
-    };
-}
-if (!window.console.warn) {
-    window.console.warn = function(msg) {
-        this.log("warn: " + msg);
-    };
-}
-
-// Register pause, resume and deviceready channels as events on document.
-channel.onPause = cordova.addDocumentEventHandler('pause');
-channel.onResume = cordova.addDocumentEventHandler('resume');
-channel.onActivated = cordova.addDocumentEventHandler('activated');
-channel.onDeviceReady = cordova.addStickyDocumentEventHandler('deviceready');
-
-// Listen for DOMContentLoaded and notify our channel subscribers.
-if (document.readyState == 'complete' || document.readyState == 'interactive') {
-    channel.onDOMContentLoaded.fire();
-} else {
-    document.addEventListener('DOMContentLoaded', function() {
-        channel.onDOMContentLoaded.fire();
-    }, false);
-}
-
-// _nativeReady is global variable that the native side can set
-// to signify that the native code is ready. It is a global since
-// it may be called before any cordova JS is ready.
-if (window._nativeReady) {
-    channel.onNativeReady.fire();
-}
-
-modulemapper.clobbers('cordova', 'cordova');
-modulemapper.clobbers('cordova/exec', 'cordova.exec');
-modulemapper.clobbers('cordova/exec', 'Cordova.exec');
-
-// Call the platform-specific initialization.
-platform.bootstrap && platform.bootstrap();
-
-// Wrap in a setTimeout to support the use-case of having plugin JS appended to cordova.js.
-// The delay allows the attached modules to be defined before the plugin loader looks for them.
-setTimeout(function() {
-    pluginloader.load(function() {
-        channel.onPluginsReady.fire();
-    });
-}, 0);
-
-/**
- * Create all cordova objects once native side is ready.
- */
-channel.join(function() {
-    modulemapper.mapModules(window);
-
-    platform.initialize && platform.initialize();
-
-    // Fire event to notify that all objects are created
-    channel.onCordovaReady.fire();
-
-    // Fire onDeviceReady event once page has fully loaded, all
-    // constructors have run and cordova info has been received from native
-    // side.
-    channel.join(function() {
-        require('cordova').fireDocumentEvent('deviceready');
-    }, channel.deviceReadyChannelsArray);
-
-}, platformInitChannelsArray);
-
-
-});
-
-// file: src/common/init_b.js
-define("cordova/init_b", function(require, exports, module) {
-
-var channel = require('cordova/channel');
-var cordova = require('cordova');
-var platform = require('cordova/platform');
-var utils = require('cordova/utils');
-
-var platformInitChannelsArray = [channel.onDOMContentLoaded, channel.onNativeReady];
-
-// setting exec
-cordova.exec = require('cordova/exec');
-
-function logUnfiredChannels(arr) {
-    for (var i = 0; i < arr.length; ++i) {
-        if (arr[i].state != 2) {
-            console.log('Channel not fired: ' + arr[i].type);
-        }
-    }
-}
-
-window.setTimeout(function() {
-    if (channel.onDeviceReady.state != 2) {
-        console.log('deviceready has not fired after 5 seconds.');
-        logUnfiredChannels(platformInitChannelsArray);
-        logUnfiredChannels(channel.deviceReadyChannelsArray);
-    }
-}, 5000);
-
-// Replace navigator before any modules are required(), to ensure it happens as soon as possible.
-// We replace it so that properties that can't be clobbered can instead be overridden.
-function replaceNavigator(origNavigator) {
-    var CordovaNavigator = function() {};
-    CordovaNavigator.prototype = origNavigator;
-    var newNavigator = new CordovaNavigator();
-    // This work-around really only applies to new APIs that are newer than Function.bind.
-    // Without it, APIs such as getGamepads() break.
-    if (CordovaNavigator.bind) {
-        for (var key in origNavigator) {
-            if (typeof origNavigator[key] == 'function') {
-                newNavigator[key] = origNavigator[key].bind(origNavigator);
-            }
-            else {
-                (function(k) {
-                    utils.defineGetterSetter(newNavigator,key,function() {
-                        return origNavigator[k];
-                    });
-                })(key);
-            }
-        }
-    }
-    return newNavigator;
-}
-if (window.navigator) {
-    window.navigator = replaceNavigator(window.navigator);
-}
-
-if (!window.console) {
-    window.console = {
-        log: function(){}
-    };
-}
-if (!window.console.warn) {
-    window.console.warn = function(msg) {
-        this.log("warn: " + msg);
-    };
-}
-
-// Register pause, resume and deviceready channels as events on document.
-channel.onPause = cordova.addDocumentEventHandler('pause');
-channel.onResume = cordova.addDocumentEventHandler('resume');
-channel.onActivated = cordova.addDocumentEventHandler('activated');
-channel.onDeviceReady = cordova.addStickyDocumentEventHandler('deviceready');
-
-// Listen for DOMContentLoaded and notify our channel subscribers.
-if (document.readyState == 'complete' || document.readyState == 'interactive') {
-    channel.onDOMContentLoaded.fire();
-} else {
-    document.addEventListener('DOMContentLoaded', function() {
-        channel.onDOMContentLoaded.fire();
-    }, false);
-}
-
-// _nativeReady is global variable that the native side can set
-// to signify that the native code is ready. It is a global since
-// it may be called before any cordova JS is ready.
-if (window._nativeReady) {
-    channel.onNativeReady.fire();
-}
-
-// Call the platform-specific initialization.
-platform.bootstrap && platform.bootstrap();
-
-/**
- * Create all cordova objects once native side is ready.
- */
-channel.join(function() {
-
-    platform.initialize && platform.initialize();
-
-    // Fire event to notify that all objects are created
-    channel.onCordovaReady.fire();
-
-    // Fire onDeviceReady event once page has fully loaded, all
-    // constructors have run and cordova info has been received from native
-    // side.
-    channel.join(function() {
-        require('cordova').fireDocumentEvent('deviceready');
-    }, channel.deviceReadyChannelsArray);
-
-}, platformInitChannelsArray);
-
-});
-
-// file: src/common/modulemapper.js
-define("cordova/modulemapper", function(require, exports, module) {
-
-var builder = require('cordova/builder'),
-    moduleMap = define.moduleMap,
-    symbolList,
-    deprecationMap;
-
-exports.reset = function() {
-    symbolList = [];
-    deprecationMap = {};
-};
-
-function addEntry(strategy, moduleName, symbolPath, opt_deprecationMessage) {
-    if (!(moduleName in moduleMap)) {
-        throw new Error('Module ' + moduleName + ' does not exist.');
-    }
-    symbolList.push(strategy, moduleName, symbolPath);
-    if (opt_deprecationMessage) {
-        deprecationMap[symbolPath] = opt_deprecationMessage;
-    }
-}
-
-// Note: Android 2.3 does have Function.bind().
-exports.clobbers = function(moduleName, symbolPath, opt_deprecationMessage) {
-    addEntry('c', moduleName, symbolPath, opt_deprecationMessage);
-};
-
-exports.merges = function(moduleName, symbolPath, opt_deprecationMessage) {
-    addEntry('m', moduleName, symbolPath, opt_deprecationMessage);
-};
-
-exports.defaults = function(moduleName, symbolPath, opt_deprecationMessage) {
-    addEntry('d', moduleName, symbolPath, opt_deprecationMessage);
-};
-
-exports.runs = function(moduleName) {
-    addEntry('r', moduleName, null);
-};
-
-function prepareNamespace(symbolPath, context) {
-    if (!symbolPath) {
-        return context;
-    }
-    var parts = symbolPath.split('.');
-    var cur = context;
-    for (var i = 0, part; part = parts[i]; ++i) {
-        cur = cur[part] = cur[part] || {};
-    }
-    return cur;
-}
-
-exports.mapModules = function(context) {
-    var origSymbols = {};
-    context.CDV_origSymbols = origSymbols;
-    for (var i = 0, len = symbolList.length; i < len; i += 3) {
-        var strategy = symbolList[i];
-        var moduleName = symbolList[i + 1];
-        var module = require(moduleName);
-        // <runs/>
-        if (strategy == 'r') {
-            continue;
-        }
-        var symbolPath = symbolList[i + 2];
-        var lastDot = symbolPath.lastIndexOf('.');
-        var namespace = symbolPath.substr(0, lastDot);
-        var lastName = symbolPath.substr(lastDot + 1);
-
-        var deprecationMsg = symbolPath in deprecationMap ? 'Access made to deprecated symbol: ' + symbolPath + '. ' + deprecationMsg : null;
-        var parentObj = prepareNamespace(namespace, context);
-        var target = parentObj[lastName];
-
-        if (strategy == 'm' && target) {
-            builder.recursiveMerge(target, module);
-        } else if ((strategy == 'd' && !target) || (strategy != 'd')) {
-            if (!(symbolPath in origSymbols)) {
-                origSymbols[symbolPath] = target;
-            }
-            builder.assignOrWrapInDeprecateGetter(parentObj, lastName, module, deprecationMsg);
-        }
-    }
-};
-
-exports.getOriginalSymbol = function(context, symbolPath) {
-    var origSymbols = context.CDV_origSymbols;
-    if (origSymbols && (symbolPath in origSymbols)) {
-        return origSymbols[symbolPath];
-    }
-    var parts = symbolPath.split('.');
-    var obj = context;
-    for (var i = 0; i < parts.length; ++i) {
-        obj = obj && obj[parts[i]];
-    }
-    return obj;
-};
-
-exports.reset();
-
-
-});
-
-// file: /Users/steveng/repo/cordova/cordova-android/cordova-js-src/platform.js
-define("cordova/platform", function(require, exports, module) {
-
-module.exports = {
-    id: 'android',
-    bootstrap: function() {
-        var channel = require('cordova/channel'),
-            cordova = require('cordova'),
-            exec = require('cordova/exec'),
-            modulemapper = require('cordova/modulemapper');
-
-        // Get the shared secret needed to use the bridge.
-        exec.init();
-
-        // TODO: Extract this as a proper plugin.
-        modulemapper.clobbers('cordova/plugin/android/app', 'navigator.app');
-
-        var APP_PLUGIN_NAME = Number(cordova.platformVersion.split('.')[0]) >= 4 ? 'CoreAndroid' : 'App';
-
-        // Inject a listener for the backbutton on the document.
-        var backButtonChannel = cordova.addDocumentEventHandler('backbutton');
-        backButtonChannel.onHasSubscribersChange = function() {
-            // If we just attached the first handler or detached the last handler,
-            // let native know we need to override the back button.
-            exec(null, null, APP_PLUGIN_NAME, "overrideBackbutton", [this.numHandlers == 1]);
-        };
-
-        // Add hardware MENU and SEARCH button handlers
-        cordova.addDocumentEventHandler('menubutton');
-        cordova.addDocumentEventHandler('searchbutton');
-
-        function bindButtonChannel(buttonName) {
-            // generic button bind used for volumeup/volumedown buttons
-            var volumeButtonChannel = cordova.addDocumentEventHandler(buttonName + 'button');
-            volumeButtonChannel.onHasSubscribersChange = function() {
-                exec(null, null, APP_PLUGIN_NAME, "overrideButton", [buttonName, this.numHandlers == 1]);
-            };
-        }
-        // Inject a listener for the volume buttons on the document.
-        bindButtonChannel('volumeup');
-        bindButtonChannel('volumedown');
-
-        // Let native code know we are all done on the JS side.
-        // Native code will then un-hide the WebView.
-        channel.onCordovaReady.subscribe(function() {
-            exec(onMessageFromNative, null, APP_PLUGIN_NAME, 'messageChannel', []);
-            exec(null, null, APP_PLUGIN_NAME, "show", []);
-        });
-    }
-};
-
-function onMessageFromNative(msg) {
-    var cordova = require('cordova');
-    var action = msg.action;
-
-    switch (action)
-    {
-        // Button events
-        case 'backbutton':
-        case 'menubutton':
-        case 'searchbutton':
-        // App life cycle events
-        case 'pause':
-        case 'resume':
-        // Volume events
-        case 'volumedownbutton':
-        case 'volumeupbutton':
-            cordova.fireDocumentEvent(action);
-            break;
-        default:
-            throw new Error('Unknown event action ' + action);
-    }
-}
-
-});
-
-// file: /Users/steveng/repo/cordova/cordova-android/cordova-js-src/plugin/android/app.js
-define("cordova/plugin/android/app", function(require, exports, module) {
-
-var exec = require('cordova/exec');
-var APP_PLUGIN_NAME = Number(require('cordova').platformVersion.split('.')[0]) >= 4 ? 'CoreAndroid' : 'App';
-
-module.exports = {
-    /**
-    * Clear the resource cache.
-    */
-    clearCache:function() {
-        exec(null, null, APP_PLUGIN_NAME, "clearCache", []);
-    },
-
-    /**
-    * Load the url into the webview or into new browser instance.
-    *
-    * @param url           The URL to load
-    * @param props         Properties that can be passed in to the activity:
-    *      wait: int                           => wait msec before loading URL
-    *      loadingDialog: "Title,Message"      => display a native loading dialog
-    *      loadUrlTimeoutValue: int            => time in msec to wait before triggering a timeout error
-    *      clearHistory: boolean              => clear webview history (default=false)
-    *      openExternal: boolean              => open in a new browser (default=false)
-    *
-    * Example:
-    *      navigator.app.loadUrl("http://server/myapp/index.html", {wait:2000, loadingDialog:"Wait,Loading App", loadUrlTimeoutValue: 60000});
-    */
-    loadUrl:function(url, props) {
-        exec(null, null, APP_PLUGIN_NAME, "loadUrl", [url, props]);
-    },
-
-    /**
-    * Cancel loadUrl that is waiting to be loaded.
-    */
-    cancelLoadUrl:function() {
-        exec(null, null, APP_PLUGIN_NAME, "cancelLoadUrl", []);
-    },
-
-    /**
-    * Clear web history in this web view.
-    * Instead of BACK button loading the previous web page, it will exit the app.
-    */
-    clearHistory:function() {
-        exec(null, null, APP_PLUGIN_NAME, "clearHistory", []);
-    },
-
-    /**
-    * Go to previous page displayed.
-    * This is the same as pressing the backbutton on Android device.
-    */
-    backHistory:function() {
-        exec(null, null, APP_PLUGIN_NAME, "backHistory", []);
-    },
-
-    /**
-    * Override the default behavior of the Android back button.
-    * If overridden, when the back button is pressed, the "backKeyDown" JavaScript event will be fired.
-    *
-    * Note: The user should not have to call this method.  Instead, when the user
-    *       registers for the "backbutton" event, this is automatically done.
-    *
-    * @param override        T=override, F=cancel override
-    */
-    overrideBackbutton:function(override) {
-        exec(null, null, APP_PLUGIN_NAME, "overrideBackbutton", [override]);
-    },
-
-    /**
-    * Override the default behavior of the Android volume button.
-    * If overridden, when the volume button is pressed, the "volume[up|down]button"
-    * JavaScript event will be fired.
-    *
-    * Note: The user should not have to call this method.  Instead, when the user
-    *       registers for the "volume[up|down]button" event, this is automatically done.
-    *
-    * @param button          volumeup, volumedown
-    * @param override        T=override, F=cancel override
-    */
-    overrideButton:function(button, override) {
-        exec(null, null, APP_PLUGIN_NAME, "overrideButton", [button, override]);
-    },
-
-    /**
-    * Exit and terminate the application.
-    */
-    exitApp:function() {
-        return exec(null, null, APP_PLUGIN_NAME, "exitApp", []);
-    }
-};
-
-});
-
-// file: src/common/pluginloader.js
-define("cordova/pluginloader", function(require, exports, module) {
-
-/*
-    NOTE: this file is NOT used when we use the browserify workflow
-*/
-
-var modulemapper = require('cordova/modulemapper');
-var urlutil = require('cordova/urlutil');
-
-// Helper function to inject a <script> tag.
-// Exported for testing.
-exports.injectScript = function(url, onload, onerror) {
-    var script = document.createElement("script");
-    // onload fires even when script fails loads with an error.
-    script.onload = onload;
-    // onerror fires for malformed URLs.
-    script.onerror = onerror;
-    script.src = url;
-    document.head.appendChild(script);
-};
-
-function injectIfNecessary(id, url, onload, onerror) {
-    onerror = onerror || onload;
-    if (id in define.moduleMap) {
-        onload();
-    } else {
-        exports.injectScript(url, function() {
-            if (id in define.moduleMap) {
-                onload();
-            } else {
-                onerror();
-            }
-        }, onerror);
-    }
-}
-
-function onScriptLoadingComplete(moduleList, finishPluginLoading) {
-    // Loop through all the plugins and then through their clobbers and merges.
-    for (var i = 0, module; module = moduleList[i]; i++) {
-        if (module.clobbers && module.clobbers.length) {
-            for (var j = 0; j < module.clobbers.length; j++) {
-                modulemapper.clobbers(module.id, module.clobbers[j]);
-            }
-        }
-
-        if (module.merges && module.merges.length) {
-            for (var k = 0; k < module.merges.length; k++) {
-                modulemapper.merges(module.id, module.merges[k]);
-            }
-        }
-
-        // Finally, if runs is truthy we want to simply require() the module.
-        if (module.runs) {
-            modulemapper.runs(module.id);
-        }
-    }
-
-    finishPluginLoading();
-}
-
-// Handler for the cordova_plugins.js content.
-// See plugman's plugin_loader.js for the details of this object.
-// This function is only called if the really is a plugins array that isn't empty.
-// Otherwise the onerror response handler will just call finishPluginLoading().
-function handlePluginsObject(path, moduleList, finishPluginLoading) {
-    // Now inject the scripts.
-    var scriptCounter = moduleList.length;
-
-    if (!scriptCounter) {
-        finishPluginLoading();
-        return;
-    }
-    function scriptLoadedCallback() {
-        if (!--scriptCounter) {
-            onScriptLoadingComplete(moduleList, finishPluginLoading);
-        }
-    }
-
-    for (var i = 0; i < moduleList.length; i++) {
-        injectIfNecessary(moduleList[i].id, path + moduleList[i].file, scriptLoadedCallback);
-    }
-}
-
-function findCordovaPath() {
-    var path = null;
-    var scripts = document.getElementsByTagName('script');
-    var term = '/cordova.js';
-    for (var n = scripts.length-1; n>-1; n--) {
-        var src = scripts[n].src.replace(/\?.*$/, ''); // Strip any query param (CB-6007).
-        if (src.indexOf(term) == (src.length - term.length)) {
-            path = src.substring(0, src.length - term.length) + '/';
-            break;
-        }
-    }
-    return path;
-}
-
-// Tries to load all plugins' js-modules.
-// This is an async process, but onDeviceReady is blocked on onPluginsReady.
-// onPluginsReady is fired when there are no plugins to load, or they are all done.
-exports.load = function(callback) {
-    var pathPrefix = findCordovaPath();
-    if (pathPrefix === null) {
-        console.log('Could not find cordova.js script tag. Plugin loading may fail.');
-        pathPrefix = '';
-    }
-    injectIfNecessary('cordova/plugin_list', pathPrefix + 'cordova_plugins.js', function() {
-        var moduleList = require("cordova/plugin_list");
-        handlePluginsObject(pathPrefix, moduleList, callback);
-    }, callback);
-};
-
-
-});
-
-// file: src/common/urlutil.js
-define("cordova/urlutil", function(require, exports, module) {
-
-
-/**
- * For already absolute URLs, returns what is passed in.
- * For relative URLs, converts them to absolute ones.
- */
-exports.makeAbsolute = function makeAbsolute(url) {
-    var anchorEl = document.createElement('a');
-    anchorEl.href = url;
-    return anchorEl.href;
-};
-
-
-});
-
-// file: src/common/utils.js
-define("cordova/utils", function(require, exports, module) {
-
-var utils = exports;
-
-/**
- * Defines a property getter / setter for obj[key].
- */
-utils.defineGetterSetter = function(obj, key, getFunc, opt_setFunc) {
-    if (Object.defineProperty) {
-        var desc = {
-            get: getFunc,
-            configurable: true
-        };
-        if (opt_setFunc) {
-            desc.set = opt_setFunc;
-        }
-        Object.defineProperty(obj, key, desc);
-    } else {
-        obj.__defineGetter__(key, getFunc);
-        if (opt_setFunc) {
-            obj.__defineSetter__(key, opt_setFunc);
-        }
-    }
-};
-
-/**
- * Defines a property getter for obj[key].
- */
-utils.defineGetter = utils.defineGetterSetter;
-
-utils.arrayIndexOf = function(a, item) {
-    if (a.indexOf) {
-        return a.indexOf(item);
-    }
-    var len = a.length;
-    for (var i = 0; i < len; ++i) {
-        if (a[i] == item) {
-            return i;
-        }
-    }
-    return -1;
-};
-
-/**
- * Returns whether the item was found in the array.
- */
-utils.arrayRemove = function(a, item) {
-    var index = utils.arrayIndexOf(a, item);
-    if (index != -1) {
-        a.splice(index, 1);
-    }
-    return index != -1;
-};
-
-utils.typeName = function(val) {
-    return Object.prototype.toString.call(val).slice(8, -1);
-};
-
-/**
- * Returns an indication of whether the argument is an array or not
- */
-utils.isArray = Array.isArray ||
-                function(a) {return utils.typeName(a) == 'Array';};
-
-/**
- * Returns an indication of whether the argument is a Date or not
- */
-utils.isDate = function(d) {
-    return (d instanceof Date);
-};
-
-/**
- * Does a deep clone of the object.
- */
-utils.clone = function(obj) {
-    if(!obj || typeof obj == 'function' || utils.isDate(obj) || typeof obj != 'object') {
-        return obj;
-    }
-
-    var retVal, i;
-
-    if(utils.isArray(obj)){
-        retVal = [];
-        for(i = 0; i < obj.length; ++i){
-            retVal.push(utils.clone(obj[i]));
-        }
-        return retVal;
-    }
-
-    retVal = {};
-    for(i in obj){
-        if(!(i in retVal) || retVal[i] != obj[i]) {
-            retVal[i] = utils.clone(obj[i]);
-        }
-    }
-    return retVal;
-};
-
-/**
- * Returns a wrapped version of the function
- */
-utils.close = function(context, func, params) {
-    return function() {
-        var args = params || arguments;
-        return func.apply(context, args);
-    };
-};
-
-//------------------------------------------------------------------------------
-function UUIDcreatePart(length) {
-    var uuidpart = "";
-    for (var i=0; i<length; i++) {
-        var uuidchar = parseInt((Math.random() * 256), 10).toString(16);
-        if (uuidchar.length == 1) {
-            uuidchar = "0" + uuidchar;
-        }
-        uuidpart += uuidchar;
-    }
-    return uuidpart;
-}
-
-/**
- * Create a UUID
- */
-utils.createUUID = function() {
-    return UUIDcreatePart(4) + '-' +
-        UUIDcreatePart(2) + '-' +
-        UUIDcreatePart(2) + '-' +
-        UUIDcreatePart(2) + '-' +
-        UUIDcreatePart(6);
-};
-
-
-/**
- * Extends a child object from a parent object using classical inheritance
- * pattern.
- */
-utils.extend = (function() {
-    // proxy used to establish prototype chain
-    var F = function() {};
-    // extend Child from Parent
-    return function(Child, Parent) {
-
-        F.prototype = Parent.prototype;
-        Child.prototype = new F();
-        Child.__super__ = Parent.prototype;
-        Child.prototype.constructor = Child;
-    };
-}());
-
-/**
- * Alerts a message in any available way: alert or console.log.
- */
-utils.alert = function(msg) {
-    if (window.alert) {
-        window.alert(msg);
-    } else if (console && console.log) {
-        console.log(msg);
-    }
-};
-
-
-
-
-
-});
-
-window.cordova = require('cordova');
-// file: src/scripts/bootstrap.js
-
-require('cordova/init');
-
-})();
+
+
+
+<!DOCTYPE html>
+<html lang="en" class="">
+  <head prefix="og: http://ogp.me/ns# fb: http://ogp.me/ns/fb# object: http://ogp.me/ns/object# article: http://ogp.me/ns/article# profile: http://ogp.me/ns/profile#">
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta http-equiv="Content-Language" content="en">
+    <meta name="viewport" content="width=1020">
+    
+    
+    <title>cordova-js/cordova.js at master · apache/cordova-js · GitHub</title>
+    <link rel="search" type="application/opensearchdescription+xml" href="/opensearch.xml" title="GitHub">
+    <link rel="fluid-icon" href="https://github.com/fluidicon.png" title="GitHub">
+    <link rel="apple-touch-icon" sizes="57x57" href="/apple-touch-icon-114.png">
+    <link rel="apple-touch-icon" sizes="114x114" href="/apple-touch-icon-114.png">
+    <link rel="apple-touch-icon" sizes="72x72" href="/apple-touch-icon-144.png">
+    <link rel="apple-touch-icon" sizes="144x144" href="/apple-touch-icon-144.png">
+    <meta property="fb:app_id" content="1401488693436528">
+
+      <meta content="@github" name="twitter:site" /><meta content="summary" name="twitter:card" /><meta content="apache/cordova-js" name="twitter:title" /><meta content="cordova-js - Mirror of Apache Cordova js" name="twitter:description" /><meta content="https://avatars1.githubusercontent.com/u/47359?v=3&amp;s=400" name="twitter:image:src" />
+      <meta content="GitHub" property="og:site_name" /><meta content="object" property="og:type" /><meta content="https://avatars1.githubusercontent.com/u/47359?v=3&amp;s=400" property="og:image" /><meta content="apache/cordova-js" property="og:title" /><meta content="https://github.com/apache/cordova-js" property="og:url" /><meta content="cordova-js - Mirror of Apache Cordova js" property="og:description" />
+      <meta name="browser-stats-url" content="https://api.github.com/_private/browser/stats">
+    <meta name="browser-errors-url" content="https://api.github.com/_private/browser/errors">
+    <link rel="assets" href="https://assets-cdn.github.com/">
+    
+    <meta name="pjax-timeout" content="1000">
+    
+
+    <meta name="msapplication-TileImage" content="/windows-tile.png">
+    <meta name="msapplication-TileColor" content="#ffffff">
+    <meta name="selected-link" value="repo_source" data-pjax-transient>
+
+    <meta name="google-site-verification" content="KT5gs8h0wvaagLKAVWq8bbeNwnZZK1r1XQysX3xurLU">
+    <meta name="google-analytics" content="UA-3769691-2">
+
+<meta content="collector.githubapp.com" name="octolytics-host" /><meta content="github" name="octolytics-app-id" /><meta content="2EEF67A4:5099:23F414EE:5647D811" name="octolytics-dimension-request_id" />
+
+<meta content="Rails, view, blob#show" data-pjax-transient="true" name="analytics-event" />
+
+
+  <meta class="js-ga-set" name="dimension1" content="Logged Out">
+    <meta class="js-ga-set" name="dimension4" content="Current repo nav">
+
+
+
+
+    <meta name="is-dotcom" content="true">
+        <meta name="hostname" content="github.com">
+    <meta name="user-login" content="">
+
+      <link rel="mask-icon" href="https://assets-cdn.github.com/pinned-octocat.svg" color="#4078c0">
+      <link rel="icon" type="image/x-icon" href="https://assets-cdn.github.com/favicon.ico">
+
+    <meta content="b0484891aaf2e397f2f965a3c3e7dbe55150d4a5" name="form-nonce" />
+
+    <link crossorigin="anonymous" href="https://assets-cdn.github.com/assets/github-6670887f84dea33391b25bf5af0455816ab82a9bec8f4f5e4d8160d53b08c0f3.css" media="all" rel="stylesheet" />
+    <link crossorigin="anonymous" href="https://assets-cdn.github.com/assets/github2-53964e9b93636aa437196c028e3b15febd3c6d5a52d4e8368a9c2894932d294e.css" media="all" rel="stylesheet" />
+    
+    
+    
+
+
+    <meta http-equiv="x-pjax-version" content="647af4c4c6c645f2eb83f6f77f97a93f">
+
+      
+  <meta name="description" content="cordova-js - Mirror of Apache Cordova js">
+  <meta name="go-import" content="github.com/apache/cordova-js git https://github.com/apache/cordova-js.git">
+
+  <meta content="47359" name="octolytics-dimension-user_id" /><meta content="apache" name="octolytics-dimension-user_login" /><meta content="6898382" name="octolytics-dimension-repository_id" /><meta content="apache/cordova-js" name="octolytics-dimension-repository_nwo" /><meta content="true" name="octolytics-dimension-repository_public" /><meta content="false" name="octolytics-dimension-repository_is_fork" /><meta content="6898382" name="octolytics-dimension-repository_network_root_id" /><meta content="apache/cordova-js" name="octolytics-dimension-repository_network_root_nwo" />
+  <link href="https://github.com/apache/cordova-js/commits/master.atom" rel="alternate" title="Recent Commits to cordova-js:master" type="application/atom+xml">
+
+  </head>
+
+
+  <body class="logged_out   env-production  vis-public mirror  page-blob">
+    <a href="#start-of-content" tabindex="1" class="accessibility-aid js-skip-to-content">Skip to content</a>
+
+    
+    
+    
+
+
+
+      
+      <div class="header header-logged-out" role="banner">
+  <div class="container clearfix">
+
+    <a class="header-logo-wordmark" href="https://github.com/" data-ga-click="(Logged out) Header, go to homepage, icon:logo-wordmark">
+      <span class="mega-octicon octicon-logo-github"></span>
+    </a>
+
+    <div class="header-actions" role="navigation">
+        <a class="btn btn-primary" href="/join" data-ga-click="(Logged out) Header, clicked Sign up, text:sign-up">Sign up</a>
+      <a class="btn" href="/login?return_to=%2Fapache%2Fcordova-js%2Fblob%2Fmaster%2Fsrc%2Fcordova.js" data-ga-click="(Logged out) Header, clicked Sign in, text:sign-in">Sign in</a>
+    </div>
+
+    <div class="site-search repo-scope js-site-search" role="search">
+      <!-- </textarea> --><!-- '"` --><form accept-charset="UTF-8" action="/apache/cordova-js/search" class="js-site-search-form" data-global-search-url="/search" data-repo-search-url="/apache/cordova-js/search" method="get"><div style="margin:0;padding:0;display:inline"><input name="utf8" type="hidden" value="&#x2713;" /></div>
+  <label class="js-chromeless-input-container form-control">
+    <div class="scope-badge">This repository</div>
+    <input type="text"
+      class="js-site-search-focus js-site-search-field is-clearable chromeless-input"
+      data-hotkey="s"
+      name="q"
+      placeholder="Search"
+      aria-label="Search this repository"
+      data-global-scope-placeholder="Search GitHub"
+      data-repo-scope-placeholder="Search"
+      tabindex="1"
+      autocapitalize="off">
+  </label>
+</form>
+    </div>
+
+      <ul class="header-nav left" role="navigation">
+          <li class="header-nav-item">
+            <a class="header-nav-link" href="/explore" data-ga-click="(Logged out) Header, go to explore, text:explore">Explore</a>
+          </li>
+          <li class="header-nav-item">
+            <a class="header-nav-link" href="/features" data-ga-click="(Logged out) Header, go to features, text:features">Features</a>
+          </li>
+          <li class="header-nav-item">
+            <a class="header-nav-link" href="https://enterprise.github.com/" data-ga-click="(Logged out) Header, go to enterprise, text:enterprise">Enterprise</a>
+          </li>
+          <li class="header-nav-item">
+            <a class="header-nav-link" href="/pricing" data-ga-click="(Logged out) Header, go to pricing, text:pricing">Pricing</a>
+          </li>
+      </ul>
+
+  </div>
+</div>
+
+
+
+    <div id="start-of-content" class="accessibility-aid"></div>
+
+    <div id="js-flash-container">
+</div>
+
+
+    <div role="main" class="main-content">
+        <div itemscope itemtype="http://schema.org/WebPage">
+    <div class="pagehead repohead instapaper_ignore readability-menu">
+
+      <div class="container">
+
+        <div class="clearfix">
+          
+
+<ul class="pagehead-actions">
+
+  <li>
+      <a href="/login?return_to=%2Fapache%2Fcordova-js"
+    class="btn btn-sm btn-with-count tooltipped tooltipped-n"
+    aria-label="You must be signed in to watch a repository" rel="nofollow">
+    <span class="octicon octicon-eye"></span>
+    Watch
+  </a>
+  <a class="social-count" href="/apache/cordova-js/watchers">
+    65
+  </a>
+
+  </li>
+
+  <li>
+      <a href="/login?return_to=%2Fapache%2Fcordova-js"
+    class="btn btn-sm btn-with-count tooltipped tooltipped-n"
+    aria-label="You must be signed in to star a repository" rel="nofollow">
+    <span class="octicon octicon-star"></span>
+    Star
+  </a>
+
+    <a class="social-count js-social-count" href="/apache/cordova-js/stargazers">
+      311
+    </a>
+
+  </li>
+
+  <li>
+      <a href="/login?return_to=%2Fapache%2Fcordova-js"
+        class="btn btn-sm btn-with-count tooltipped tooltipped-n"
+        aria-label="You must be signed in to fork a repository" rel="nofollow">
+        <span class="octicon octicon-repo-forked"></span>
+        Fork
+      </a>
+
+    <a href="/apache/cordova-js/network" class="social-count">
+      383
+    </a>
+  </li>
+</ul>
+
+          <h1 itemscope itemtype="http://data-vocabulary.org/Breadcrumb" class="entry-title public repo-mirror">
+  <span class="mega-octicon octicon-mirror"></span>
+  <span class="author"><a href="/apache" class="url fn" itemprop="url" rel="author"><span itemprop="title">apache</span></a></span><!--
+--><span class="path-divider">/</span><!--
+--><strong><a href="/apache/cordova-js" data-pjax="#js-repo-pjax-container">cordova-js</a></strong>
+
+  <span class="page-context-loader">
+    <img alt="" height="16" src="https://assets-cdn.github.com/images/spinners/octocat-spinner-32.gif" width="16" />
+  </span>
+
+    <span class="mirror-flag">
+      <span class="text">mirrored from <a href="git://git.apache.org/cordova-js.git">git://git.apache.org/cordova-js.git</a></span>
+    </span>
+</h1>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="container">
+      <div class="repository-with-sidebar repo-container new-discussion-timeline ">
+        <div class="repository-sidebar clearfix">
+          
+<nav class="sunken-menu repo-nav js-repo-nav js-sidenav-container-pjax js-octicon-loaders"
+     role="navigation"
+     data-pjax="#js-repo-pjax-container"
+     data-issue-count-url="/apache/cordova-js/issues/counts">
+  <ul class="sunken-menu-group">
+    <li class="tooltipped tooltipped-w" aria-label="Code">
+      <a href="/apache/cordova-js" aria-label="Code" aria-selected="true" class="js-selected-navigation-item selected sunken-menu-item" data-hotkey="g c" data-selected-links="repo_source repo_downloads repo_commits repo_releases repo_tags repo_branches /apache/cordova-js">
+        <span class="octicon octicon-code"></span> <span class="full-word">Code</span>
+        <img alt="" class="mini-loader" height="16" src="https://assets-cdn.github.com/images/spinners/octocat-spinner-32.gif" width="16" />
+</a>    </li>
+
+
+    <li class="tooltipped tooltipped-w" aria-label="Pull requests">
+      <a href="/apache/cordova-js/pulls" aria-label="Pull requests" class="js-selected-navigation-item sunken-menu-item" data-hotkey="g p" data-selected-links="repo_pulls /apache/cordova-js/pulls">
+          <span class="octicon octicon-git-pull-request"></span> <span class="full-word">Pull requests</span>
+          <span class="js-pull-replace-counter"></span>
+          <img alt="" class="mini-loader" height="16" src="https://assets-cdn.github.com/images/spinners/octocat-spinner-32.gif" width="16" />
+</a>    </li>
+
+  </ul>
+  <div class="sunken-menu-separator"></div>
+  <ul class="sunken-menu-group">
+
+    <li class="tooltipped tooltipped-w" aria-label="Pulse">
+      <a href="/apache/cordova-js/pulse" aria-label="Pulse" class="js-selected-navigation-item sunken-menu-item" data-selected-links="pulse /apache/cordova-js/pulse">
+        <span class="octicon octicon-pulse"></span> <span class="full-word">Pulse</span>
+        <img alt="" class="mini-loader" height="16" src="https://assets-cdn.github.com/images/spinners/octocat-spinner-32.gif" width="16" />
+</a>    </li>
+
+    <li class="tooltipped tooltipped-w" aria-label="Graphs">
+      <a href="/apache/cordova-js/graphs" aria-label="Graphs" class="js-selected-navigation-item sunken-menu-item" data-selected-links="repo_graphs repo_contributors /apache/cordova-js/graphs">
+        <span class="octicon octicon-graph"></span> <span class="full-word">Graphs</span>
+        <img alt="" class="mini-loader" height="16" src="https://assets-cdn.github.com/images/spinners/octocat-spinner-32.gif" width="16" />
+</a>    </li>
+  </ul>
+
+
+</nav>
+
+            <div class="only-with-full-nav">
+                
+<div class="js-clone-url clone-url open"
+  data-protocol-type="http">
+  <h3 class="text-small text-muted"><span class="text-emphasized">HTTPS</span> clone URL</h3>
+  <div class="input-group js-zeroclipboard-container">
+    <input type="text" class="input-mini text-small text-muted input-monospace js-url-field js-zeroclipboard-target"
+           value="https://github.com/apache/cordova-js.git" readonly="readonly" aria-label="HTTPS clone URL">
+    <span class="input-group-button">
+      <button aria-label="Copy to clipboard" class="js-zeroclipboard btn btn-sm zeroclipboard-button tooltipped tooltipped-s" data-copied-hint="Copied!" type="button"><span class="octicon octicon-clippy"></span></button>
+    </span>
+  </div>
+</div>
+
+  
+<div class="js-clone-url clone-url "
+  data-protocol-type="subversion">
+  <h3 class="text-small text-muted"><span class="text-emphasized">Subversion</span> checkout URL</h3>
+  <div class="input-group js-zeroclipboard-container">
+    <input type="text" class="input-mini text-small text-muted input-monospace js-url-field js-zeroclipboard-target"
+           value="https://github.com/apache/cordova-js" readonly="readonly" aria-label="Subversion checkout URL">
+    <span class="input-group-button">
+      <button aria-label="Copy to clipboard" class="js-zeroclipboard btn btn-sm zeroclipboard-button tooltipped tooltipped-s" data-copied-hint="Copied!" type="button"><span class="octicon octicon-clippy"></span></button>
+    </span>
+  </div>
+</div>
+
+
+
+<div class="clone-options text-small text-muted">You can clone with
+  <!-- </textarea> --><!-- '"` --><form accept-charset="UTF-8" action="/users/set_protocol?protocol_selector=http&amp;protocol_type=clone" class="inline-form js-clone-selector-form " data-form-nonce="b0484891aaf2e397f2f965a3c3e7dbe55150d4a5" data-remote="true" method="post"><div style="margin:0;padding:0;display:inline"><input name="utf8" type="hidden" value="&#x2713;" /><input name="authenticity_token" type="hidden" value="jDYO/SufR+65uJiIay1BX7VwmZr0au9oQ3o2TFarRnI0QuYglWEMzzbLrhuM+DZAKwcDg525QoBdkrBn6Hdruw==" /></div><button class="btn-link js-clone-selector" data-protocol="http" type="submit">HTTPS</button></form> or <!-- </textarea> --><!-- '"` --><form accept-charset="UTF-8" action="/users/set_protocol?protocol_selector=subversion&amp;protocol_type=clone" class="inline-form js-clone-selector-form " data-form-nonce="b0484891aaf2e397f2f965a3c3e7dbe55150d4a5" data-remote="true" method="post"><div style="margin:0;padding:0;display:inline"><input name="utf8" type="hidden" value="&#x2713;" /><input name="authenticity_token" type="hidden" value="dVfTh1YkCyhnt4XADZEXO1TAOBLtmjZnyU2IhhuDECRW5T18Dk1tjlTGci4InTHVjbFM4Wj5jJUH4DjyQ+9F8Q==" /></div><button class="btn-link js-clone-selector" data-protocol="subversion" type="submit">Subversion</button></form>.
+  <a href="https://help.github.com/articles/which-remote-url-should-i-use" class="help tooltipped tooltipped-n" aria-label="Get help on which URL is right for you.">
+    <span class="octicon octicon-question"></span>
+  </a>
+</div>
+
+              <a href="/apache/cordova-js/archive/master.zip"
+                 class="btn btn-sm sidebar-button"
+                 aria-label="Download the contents of apache/cordova-js as a zip file"
+                 title="Download the contents of apache/cordova-js as a zip file"
+                 rel="nofollow">
+                <span class="octicon octicon-cloud-download"></span>
+                Download ZIP
+              </a>
+            </div>
+        </div>
+        <div id="js-repo-pjax-container" class="repository-content context-loader-container" data-pjax-container>
+
+          
+
+<a href="/apache/cordova-js/blob/8e9610fe33fc743fcaf5d920064f0deb2cad1715/src/cordova.js" class="hidden js-permalink-shortcut" data-hotkey="y">Permalink</a>
+
+<!-- blob contrib key: blob_contributors:v21:bc7d7ad96d97bcbc50fcc7e38782094a -->
+
+  <div class="file-navigation js-zeroclipboard-container">
+    
+<div class="select-menu js-menu-container js-select-menu left">
+  <button class="btn btn-sm select-menu-button js-menu-target css-truncate" data-hotkey="w"
+    title="master"
+    type="button" aria-label="Switch branches or tags" tabindex="0" aria-haspopup="true">
+    <i>Branch:</i>
+    <span class="js-select-button css-truncate-target">master</span>
+  </button>
+
+  <div class="select-menu-modal-holder js-menu-content js-navigation-container" data-pjax aria-hidden="true">
+
+    <div class="select-menu-modal">
+      <div class="select-menu-header">
+        <span class="octicon octicon-x js-menu-close" role="button" aria-label="Close"></span>
+        <span class="select-menu-title">Switch branches/tags</span>
+      </div>
+
+      <div class="select-menu-filters">
+        <div class="select-menu-text-filter">
+          <input type="text" aria-label="Filter branches/tags" id="context-commitish-filter-field" class="js-filterable-field js-navigation-enable" placeholder="Filter branches/tags">
+        </div>
+        <div class="select-menu-tabs">
+          <ul>
+            <li class="select-menu-tab">
+              <a href="#" data-tab-filter="branches" data-filter-placeholder="Filter branches/tags" class="js-select-menu-tab" role="tab">Branches</a>
+            </li>
+            <li class="select-menu-tab">
+              <a href="#" data-tab-filter="tags" data-filter-placeholder="Find a tag…" class="js-select-menu-tab" role="tab">Tags</a>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="select-menu-list select-menu-tab-bucket js-select-menu-tab-bucket" data-tab-filter="branches" role="menu">
+
+        <div data-filterable-for="context-commitish-filter-field" data-filterable-type="substring">
+
+
+            <a class="select-menu-item js-navigation-item js-navigation-open "
+               href="/apache/cordova-js/blob/2.6.x/src/cordova.js"
+               data-name="2.6.x"
+               data-skip-pjax="true"
+               rel="nofollow">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <span class="select-menu-item-text css-truncate-target" title="2.6.x">
+                2.6.x
+              </span>
+            </a>
+            <a class="select-menu-item js-navigation-item js-navigation-open "
+               href="/apache/cordova-js/blob/2.7.x/src/cordova.js"
+               data-name="2.7.x"
+               data-skip-pjax="true"
+               rel="nofollow">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <span class="select-menu-item-text css-truncate-target" title="2.7.x">
+                2.7.x
+              </span>
+            </a>
+            <a class="select-menu-item js-navigation-item js-navigation-open "
+               href="/apache/cordova-js/blob/2.8.x/src/cordova.js"
+               data-name="2.8.x"
+               data-skip-pjax="true"
+               rel="nofollow">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <span class="select-menu-item-text css-truncate-target" title="2.8.x">
+                2.8.x
+              </span>
+            </a>
+            <a class="select-menu-item js-navigation-item js-navigation-open "
+               href="/apache/cordova-js/blob/2.9.x/src/cordova.js"
+               data-name="2.9.x"
+               data-skip-pjax="true"
+               rel="nofollow">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <span class="select-menu-item-text css-truncate-target" title="2.9.x">
+                2.9.x
+              </span>
+            </a>
+            <a class="select-menu-item js-navigation-item js-navigation-open "
+               href="/apache/cordova-js/blob/3.0.x/src/cordova.js"
+               data-name="3.0.x"
+               data-skip-pjax="true"
+               rel="nofollow">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <span class="select-menu-item-text css-truncate-target" title="3.0.x">
+                3.0.x
+              </span>
+            </a>
+            <a class="select-menu-item js-navigation-item js-navigation-open "
+               href="/apache/cordova-js/blob/3.1.x/src/cordova.js"
+               data-name="3.1.x"
+               data-skip-pjax="true"
+               rel="nofollow">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <span class="select-menu-item-text css-truncate-target" title="3.1.x">
+                3.1.x
+              </span>
+            </a>
+            <a class="select-menu-item js-navigation-item js-navigation-open "
+               href="/apache/cordova-js/blob/3.2.x/src/cordova.js"
+               data-name="3.2.x"
+               data-skip-pjax="true"
+               rel="nofollow">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <span class="select-menu-item-text css-truncate-target" title="3.2.x">
+                3.2.x
+              </span>
+            </a>
+            <a class="select-menu-item js-navigation-item js-navigation-open "
+               href="/apache/cordova-js/blob/3.3.x/src/cordova.js"
+               data-name="3.3.x"
+               data-skip-pjax="true"
+               rel="nofollow">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <span class="select-menu-item-text css-truncate-target" title="3.3.x">
+                3.3.x
+              </span>
+            </a>
+            <a class="select-menu-item js-navigation-item js-navigation-open "
+               href="/apache/cordova-js/blob/3.4.x/src/cordova.js"
+               data-name="3.4.x"
+               data-skip-pjax="true"
+               rel="nofollow">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <span class="select-menu-item-text css-truncate-target" title="3.4.x">
+                3.4.x
+              </span>
+            </a>
+            <a class="select-menu-item js-navigation-item js-navigation-open "
+               href="/apache/cordova-js/blob/3.5.x/src/cordova.js"
+               data-name="3.5.x"
+               data-skip-pjax="true"
+               rel="nofollow">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <span class="select-menu-item-text css-truncate-target" title="3.5.x">
+                3.5.x
+              </span>
+            </a>
+            <a class="select-menu-item js-navigation-item js-navigation-open "
+               href="/apache/cordova-js/blob/3.6.x/src/cordova.js"
+               data-name="3.6.x"
+               data-skip-pjax="true"
+               rel="nofollow">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <span class="select-menu-item-text css-truncate-target" title="3.6.x">
+                3.6.x
+              </span>
+            </a>
+            <a class="select-menu-item js-navigation-item js-navigation-open "
+               href="/apache/cordova-js/blob/3.7.x/src/cordova.js"
+               data-name="3.7.x"
+               data-skip-pjax="true"
+               rel="nofollow">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <span class="select-menu-item-text css-truncate-target" title="3.7.x">
+                3.7.x
+              </span>
+            </a>
+            <a class="select-menu-item js-navigation-item js-navigation-open "
+               href="/apache/cordova-js/blob/3.8.x/src/cordova.js"
+               data-name="3.8.x"
+               data-skip-pjax="true"
+               rel="nofollow">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <span class="select-menu-item-text css-truncate-target" title="3.8.x">
+                3.8.x
+              </span>
+            </a>
+            <a class="select-menu-item js-navigation-item js-navigation-open "
+               href="/apache/cordova-js/blob/3.9.x/src/cordova.js"
+               data-name="3.9.x"
+               data-skip-pjax="true"
+               rel="nofollow">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <span class="select-menu-item-text css-truncate-target" title="3.9.x">
+                3.9.x
+              </span>
+            </a>
+            <a class="select-menu-item js-navigation-item js-navigation-open "
+               href="/apache/cordova-js/blob/4.0.x/src/cordova.js"
+               data-name="4.0.x"
+               data-skip-pjax="true"
+               rel="nofollow">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <span class="select-menu-item-text css-truncate-target" title="4.0.x">
+                4.0.x
+              </span>
+            </a>
+            <a class="select-menu-item js-navigation-item js-navigation-open "
+               href="/apache/cordova-js/blob/4.1.x/src/cordova.js"
+               data-name="4.1.x"
+               data-skip-pjax="true"
+               rel="nofollow">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <span class="select-menu-item-text css-truncate-target" title="4.1.x">
+                4.1.x
+              </span>
+            </a>
+            <a class="select-menu-item js-navigation-item js-navigation-open selected"
+               href="/apache/cordova-js/blob/master/src/cordova.js"
+               data-name="master"
+               data-skip-pjax="true"
+               rel="nofollow">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <span class="select-menu-item-text css-truncate-target" title="master">
+                master
+              </span>
+            </a>
+            <a class="select-menu-item js-navigation-item js-navigation-open "
+               href="/apache/cordova-js/blob/promise/src/cordova.js"
+               data-name="promise"
+               data-skip-pjax="true"
+               rel="nofollow">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <span class="select-menu-item-text css-truncate-target" title="promise">
+                promise
+              </span>
+            </a>
+        </div>
+
+          <div class="select-menu-no-results">Nothing to show</div>
+      </div>
+
+      <div class="select-menu-list select-menu-tab-bucket js-select-menu-tab-bucket" data-tab-filter="tags">
+        <div data-filterable-for="context-commitish-filter-field" data-filterable-type="substring">
+
+
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/wp8-3.8.1/src/cordova.js"
+                 data-name="wp8-3.8.1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="wp8-3.8.1">wp8-3.8.1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/wp8-3.8.0/src/cordova.js"
+                 data-name="wp8-3.8.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="wp8-3.8.0">wp8-3.8.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/windowsphone-3.7.0/src/cordova.js"
+                 data-name="windowsphone-3.7.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="windowsphone-3.7.0">windowsphone-3.7.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/windowsphone-3.6.4/src/cordova.js"
+                 data-name="windowsphone-3.6.4"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="windowsphone-3.6.4">windowsphone-3.6.4</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/windows-4.2.0/src/cordova.js"
+                 data-name="windows-4.2.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="windows-4.2.0">windows-4.2.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/windows-4.1.0/src/cordova.js"
+                 data-name="windows-4.1.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="windows-4.1.0">windows-4.1.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/windows-4.0.0/src/cordova.js"
+                 data-name="windows-4.0.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="windows-4.0.0">windows-4.0.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/windows-3.8.2/src/cordova.js"
+                 data-name="windows-3.8.2"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="windows-3.8.2">windows-3.8.2</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/windows-3.8.1/src/cordova.js"
+                 data-name="windows-3.8.1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="windows-3.8.1">windows-3.8.1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/windows-3.8.0/src/cordova.js"
+                 data-name="windows-3.8.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="windows-3.8.0">windows-3.8.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/windows-3.7.0/src/cordova.js"
+                 data-name="windows-3.7.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="windows-3.7.0">windows-3.7.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/windows-3.6.4/src/cordova.js"
+                 data-name="windows-3.6.4"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="windows-3.6.4">windows-3.6.4</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/webos-3.7.0/src/cordova.js"
+                 data-name="webos-3.7.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="webos-3.7.0">webos-3.7.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/ubuntu-4.0.0/src/cordova.js"
+                 data-name="ubuntu-4.0.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="ubuntu-4.0.0">ubuntu-4.0.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/ios-3.9.2/src/cordova.js"
+                 data-name="ios-3.9.2"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="ios-3.9.2">ios-3.9.2</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/ios-3.9.1/src/cordova.js"
+                 data-name="ios-3.9.1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="ios-3.9.1">ios-3.9.1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/ios-3.9.0/src/cordova.js"
+                 data-name="ios-3.9.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="ios-3.9.0">ios-3.9.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/ios-3.8.0/src/cordova.js"
+                 data-name="ios-3.8.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="ios-3.8.0">ios-3.8.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/ios-3.7.0/src/cordova.js"
+                 data-name="ios-3.7.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="ios-3.7.0">ios-3.7.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/firefoxos-3.7.0/src/cordova.js"
+                 data-name="firefoxos-3.7.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="firefoxos-3.7.0">firefoxos-3.7.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/browser-4.0.0/src/cordova.js"
+                 data-name="browser-4.0.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="browser-4.0.0">browser-4.0.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/browser-3.6.0/src/cordova.js"
+                 data-name="browser-3.6.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="browser-3.6.0">browser-3.6.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/blackberry-3.8.0/src/cordova.js"
+                 data-name="blackberry-3.8.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="blackberry-3.8.0">blackberry-3.8.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/android/src/cordova.js"
+                 data-name="android"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="android">android</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/android-5.0.0/src/cordova.js"
+                 data-name="android-5.0.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="android-5.0.0">android-5.0.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/android-4.1.1/src/cordova.js"
+                 data-name="android-4.1.1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="android-4.1.1">android-4.1.1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/android-4.1.0/src/cordova.js"
+                 data-name="android-4.1.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="android-4.1.0">android-4.1.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/android-4.0.2/src/cordova.js"
+                 data-name="android-4.0.2"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="android-4.0.2">android-4.0.2</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/android-4.0.1/src/cordova.js"
+                 data-name="android-4.0.1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="android-4.0.1">android-4.0.1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/android-4.0.0/src/cordova.js"
+                 data-name="android-4.0.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="android-4.0.0">android-4.0.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/android-3.7.2/src/cordova.js"
+                 data-name="android-3.7.2"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="android-3.7.2">android-3.7.2</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/android-3.7.1/src/cordova.js"
+                 data-name="android-3.7.1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="android-3.7.1">android-3.7.1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/android-3.7.0/src/cordova.js"
+                 data-name="android-3.7.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="android-3.7.0">android-3.7.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/android-3.6.4/src/cordova.js"
+                 data-name="android-3.6.4"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="android-3.6.4">android-3.6.4</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/4.1.2/src/cordova.js"
+                 data-name="4.1.2"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="4.1.2">4.1.2</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/4.1.1/src/cordova.js"
+                 data-name="4.1.1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="4.1.1">4.1.1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/4.1.0/src/cordova.js"
+                 data-name="4.1.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="4.1.0">4.1.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/4.0.0/src/cordova.js"
+                 data-name="4.0.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="4.0.0">4.0.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.9.0/src/cordova.js"
+                 data-name="3.9.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.9.0">3.9.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.8.0/src/cordova.js"
+                 data-name="3.8.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.8.0">3.8.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.7.3/src/cordova.js"
+                 data-name="3.7.3"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.7.3">3.7.3</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.7.2/src/cordova.js"
+                 data-name="3.7.2"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.7.2">3.7.2</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.7.1/src/cordova.js"
+                 data-name="3.7.1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.7.1">3.7.1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.7.0/src/cordova.js"
+                 data-name="3.7.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.7.0">3.7.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.6.4/src/cordova.js"
+                 data-name="3.6.4"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.6.4">3.6.4</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.6.3/src/cordova.js"
+                 data-name="3.6.3"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.6.3">3.6.3</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.6.1/src/cordova.js"
+                 data-name="3.6.1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.6.1">3.6.1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.6.0/src/cordova.js"
+                 data-name="3.6.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.6.0">3.6.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.5.0/src/cordova.js"
+                 data-name="3.5.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.5.0">3.5.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.5.0-rc1/src/cordova.js"
+                 data-name="3.5.0-rc1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.5.0-rc1">3.5.0-rc1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.4.0/src/cordova.js"
+                 data-name="3.4.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.4.0">3.4.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.4.0-rc1/src/cordova.js"
+                 data-name="3.4.0-rc1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.4.0-rc1">3.4.0-rc1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.3.0/src/cordova.js"
+                 data-name="3.3.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.3.0">3.3.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.3.0-rc1/src/cordova.js"
+                 data-name="3.3.0-rc1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.3.0-rc1">3.3.0-rc1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.2.0/src/cordova.js"
+                 data-name="3.2.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.2.0">3.2.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.2.0-rc1/src/cordova.js"
+                 data-name="3.2.0-rc1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.2.0-rc1">3.2.0-rc1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.1.0/src/cordova.js"
+                 data-name="3.1.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.1.0">3.1.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.1.0-rc1/src/cordova.js"
+                 data-name="3.1.0-rc1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.1.0-rc1">3.1.0-rc1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.0.0/src/cordova.js"
+                 data-name="3.0.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.0.0">3.0.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.0.0rc1/src/cordova.js"
+                 data-name="3.0.0rc1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.0.0rc1">3.0.0rc1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/3.0.0-dev/src/cordova.js"
+                 data-name="3.0.0-dev"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="3.0.0-dev">3.0.0-dev</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.9.1/src/cordova.js"
+                 data-name="2.9.1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.9.1">2.9.1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.9.0/src/cordova.js"
+                 data-name="2.9.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.9.0">2.9.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.9.0rc1/src/cordova.js"
+                 data-name="2.9.0rc1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.9.0rc1">2.9.0rc1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.8.0/src/cordova.js"
+                 data-name="2.8.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.8.0">2.8.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.8.0rc1/src/cordova.js"
+                 data-name="2.8.0rc1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.8.0rc1">2.8.0rc1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.7.0/src/cordova.js"
+                 data-name="2.7.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.7.0">2.7.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.7.0rc1/src/cordova.js"
+                 data-name="2.7.0rc1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.7.0rc1">2.7.0rc1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.6.0/src/cordova.js"
+                 data-name="2.6.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.6.0">2.6.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.6.0rc1/src/cordova.js"
+                 data-name="2.6.0rc1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.6.0rc1">2.6.0rc1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.5.0/src/cordova.js"
+                 data-name="2.5.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.5.0">2.5.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.5.0rc1/src/cordova.js"
+                 data-name="2.5.0rc1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.5.0rc1">2.5.0rc1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.4.0/src/cordova.js"
+                 data-name="2.4.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.4.0">2.4.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.4.0rc2/src/cordova.js"
+                 data-name="2.4.0rc2"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.4.0rc2">2.4.0rc2</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.4.0rc1/src/cordova.js"
+                 data-name="2.4.0rc1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.4.0rc1">2.4.0rc1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.3.0/src/cordova.js"
+                 data-name="2.3.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.3.0">2.3.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.3.0rc2/src/cordova.js"
+                 data-name="2.3.0rc2"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.3.0rc2">2.3.0rc2</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.3.0rc1/src/cordova.js"
+                 data-name="2.3.0rc1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.3.0rc1">2.3.0rc1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.2.0/src/cordova.js"
+                 data-name="2.2.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.2.0">2.2.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.2.0rc2/src/cordova.js"
+                 data-name="2.2.0rc2"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.2.0rc2">2.2.0rc2</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.2.0rc1/src/cordova.js"
+                 data-name="2.2.0rc1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.2.0rc1">2.2.0rc1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.1.0/src/cordova.js"
+                 data-name="2.1.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.1.0">2.1.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.1.0rc2/src/cordova.js"
+                 data-name="2.1.0rc2"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.1.0rc2">2.1.0rc2</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.1.0rc1/src/cordova.js"
+                 data-name="2.1.0rc1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.1.0rc1">2.1.0rc1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.0.0/src/cordova.js"
+                 data-name="2.0.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.0.0">2.0.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/2.0.0rc1/src/cordova.js"
+                 data-name="2.0.0rc1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="2.0.0rc1">2.0.0rc1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/1.9.0/src/cordova.js"
+                 data-name="1.9.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="1.9.0">1.9.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/1.9.0rc1/src/cordova.js"
+                 data-name="1.9.0rc1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="1.9.0rc1">1.9.0rc1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/1.8.1/src/cordova.js"
+                 data-name="1.8.1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="1.8.1">1.8.1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/1.8.0/src/cordova.js"
+                 data-name="1.8.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="1.8.0">1.8.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/1.8.0rc1/src/cordova.js"
+                 data-name="1.8.0rc1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="1.8.0rc1">1.8.0rc1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/1.7.0/src/cordova.js"
+                 data-name="1.7.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="1.7.0">1.7.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/1.7.0rc1/src/cordova.js"
+                 data-name="1.7.0rc1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="1.7.0rc1">1.7.0rc1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/1.6.1/src/cordova.js"
+                 data-name="1.6.1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="1.6.1">1.6.1</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/1.6.0/src/cordova.js"
+                 data-name="1.6.0"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="1.6.0">1.6.0</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/1.6.0rc2/src/cordova.js"
+                 data-name="1.6.0rc2"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="1.6.0rc2">1.6.0rc2</a>
+            </div>
+            <div class="select-menu-item js-navigation-item ">
+              <span class="select-menu-item-icon octicon octicon-check"></span>
+              <a href="/apache/cordova-js/tree/1.6.0rc1/src/cordova.js"
+                 data-name="1.6.0rc1"
+                 data-skip-pjax="true"
+                 rel="nofollow"
+                 class="js-navigation-open select-menu-item-text css-truncate-target"
+                 title="1.6.0rc1">1.6.0rc1</a>
+            </div>
+        </div>
+
+        <div class="select-menu-no-results">Nothing to show</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+    <div class="btn-group right">
+      <a href="/apache/cordova-js/find/master"
+            class="js-show-file-finder btn btn-sm empty-icon tooltipped tooltipped-nw"
+            data-pjax
+            data-hotkey="t"
+            aria-label="Quickly jump between files">
+        <span class="octicon octicon-list-unordered"></span>
+      </a>
+      <button aria-label="Copy file path to clipboard" class="js-zeroclipboard btn btn-sm zeroclipboard-button tooltipped tooltipped-s" data-copied-hint="Copied!" type="button"><span class="octicon octicon-clippy"></span></button>
+    </div>
+
+    <div class="breadcrumb js-zeroclipboard-target">
+      <span class="repo-root js-repo-root"><span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb"><a href="/apache/cordova-js" class="" data-branch="master" data-pjax="true" itemscope="url"><span itemprop="title">cordova-js</span></a></span></span><span class="separator">/</span><span itemscope="" itemtype="http://data-vocabulary.org/Breadcrumb"><a href="/apache/cordova-js/tree/master/src" class="" data-branch="master" data-pjax="true" itemscope="url"><span itemprop="title">src</span></a></span><span class="separator">/</span><strong class="final-path">cordova.js</strong>
+    </div>
+  </div>
+
+
+  <div class="commit-tease">
+      <span class="right">
+        <a class="commit-tease-sha" href="/apache/cordova-js/commit/5fdee87b2814bdafb9126f09bdb95f255db25d42" data-pjax>
+          5fdee87
+        </a>
+        <time datetime="2015-08-12T13:41:15Z" is="relative-time">Aug 12, 2015</time>
+      </span>
+      <div>
+        <img alt="@daserge" class="avatar" height="20" src="https://avatars1.githubusercontent.com/u/4272078?v=3&amp;s=40" width="20" />
+        <a href="/daserge" class="user-mention" rel="contributor">daserge</a>
+          <a href="/apache/cordova-js/commit/5fdee87b2814bdafb9126f09bdb95f255db25d42" class="message" data-pjax="true" title="CB-9342 Fix deviceReady event not fired on Windows 10 in hosted environment">CB-9342 Fix deviceReady event not fired on Windows 10 in hosted envir…</a>
+      </div>
+
+    <div class="commit-tease-contributors">
+      <a class="muted-link contributors-toggle" href="#blob_contributors_box" rel="facebox">
+        <strong>8</strong>
+         contributors
+      </a>
+          <a class="avatar-link tooltipped tooltipped-s" aria-label="purplecabbage" href="/apache/cordova-js/commits/master/src/cordova.js?author=purplecabbage"><img alt="@purplecabbage" class="avatar" height="20" src="https://avatars0.githubusercontent.com/u/46134?v=3&amp;s=40" width="20" /> </a>
+    <a class="avatar-link tooltipped tooltipped-s" aria-label="stevengill" href="/apache/cordova-js/commits/master/src/cordova.js?author=stevengill"><img alt="@stevengill" class="avatar" height="20" src="https://avatars0.githubusercontent.com/u/169536?v=3&amp;s=40" width="20" /> </a>
+    <a class="avatar-link tooltipped tooltipped-s" aria-label="robpaveza" href="/apache/cordova-js/commits/master/src/cordova.js?author=robpaveza"><img alt="@robpaveza" class="avatar" height="20" src="https://avatars3.githubusercontent.com/u/1490290?v=3&amp;s=40" width="20" /> </a>
+    <a class="avatar-link tooltipped tooltipped-s" aria-label="stacic" href="/apache/cordova-js/commits/master/src/cordova.js?author=stacic"><img alt="@stacic" class="avatar" height="20" src="https://avatars2.githubusercontent.com/u/5342469?v=3&amp;s=40" width="20" /> </a>
+    <a class="avatar-link tooltipped tooltipped-s" aria-label="mdudek" href="/apache/cordova-js/commits/master/src/cordova.js?author=mdudek"><img alt="@mdudek" class="avatar" height="20" src="https://avatars2.githubusercontent.com/u/5558549?v=3&amp;s=40" width="20" /> </a>
+    <a class="avatar-link tooltipped tooltipped-s" aria-label="daserge" href="/apache/cordova-js/commits/master/src/cordova.js?author=daserge"><img alt="@daserge" class="avatar" height="20" src="https://avatars1.githubusercontent.com/u/4272078?v=3&amp;s=40" width="20" /> </a>
+    <a class="avatar-link tooltipped tooltipped-s" aria-label="brianleroux" href="/apache/cordova-js/commits/master/src/cordova.js?author=brianleroux"><img alt="@brianleroux" class="avatar" height="20" src="https://avatars3.githubusercontent.com/u/990?v=3&amp;s=40" width="20" /> </a>
+    <a class="avatar-link tooltipped tooltipped-s" aria-label="agrieve" href="/apache/cordova-js/commits/master/src/cordova.js?author=agrieve"><img alt="@agrieve" class="avatar" height="20" src="https://avatars1.githubusercontent.com/u/1369484?v=3&amp;s=40" width="20" /> </a>
+
+
+    </div>
+
+    <div id="blob_contributors_box" style="display:none">
+      <h2 class="facebox-header" data-facebox-id="facebox-header">Users who have contributed to this file</h2>
+      <ul class="facebox-user-list" data-facebox-id="facebox-description">
+          <li class="facebox-user-list-item">
+            <img alt="@purplecabbage" height="24" src="https://avatars2.githubusercontent.com/u/46134?v=3&amp;s=48" width="24" />
+            <a href="/purplecabbage">purplecabbage</a>
+          </li>
+          <li class="facebox-user-list-item">
+            <img alt="@stevengill" height="24" src="https://avatars2.githubusercontent.com/u/169536?v=3&amp;s=48" width="24" />
+            <a href="/stevengill">stevengill</a>
+          </li>
+          <li class="facebox-user-list-item">
+            <img alt="@robpaveza" height="24" src="https://avatars1.githubusercontent.com/u/1490290?v=3&amp;s=48" width="24" />
+            <a href="/robpaveza">robpaveza</a>
+          </li>
+          <li class="facebox-user-list-item">
+            <img alt="@stacic" height="24" src="https://avatars0.githubusercontent.com/u/5342469?v=3&amp;s=48" width="24" />
+            <a href="/stacic">stacic</a>
+          </li>
+          <li class="facebox-user-list-item">
+            <img alt="@mdudek" height="24" src="https://avatars0.githubusercontent.com/u/5558549?v=3&amp;s=48" width="24" />
+            <a href="/mdudek">mdudek</a>
+          </li>
+          <li class="facebox-user-list-item">
+            <img alt="@daserge" height="24" src="https://avatars3.githubusercontent.com/u/4272078?v=3&amp;s=48" width="24" />
+            <a href="/daserge">daserge</a>
+          </li>
+          <li class="facebox-user-list-item">
+            <img alt="@brianleroux" height="24" src="https://avatars1.githubusercontent.com/u/990?v=3&amp;s=48" width="24" />
+            <a href="/brianleroux">brianleroux</a>
+          </li>
+          <li class="facebox-user-list-item">
+            <img alt="@agrieve" height="24" src="https://avatars3.githubusercontent.com/u/1369484?v=3&amp;s=48" width="24" />
+            <a href="/agrieve">agrieve</a>
+          </li>
+      </ul>
+    </div>
+  </div>
+
+<div class="file">
+  <div class="file-header">
+  <div class="file-actions">
+
+    <div class="btn-group">
+      <a href="/apache/cordova-js/raw/master/src/cordova.js" class="btn btn-sm " id="raw-url">Raw</a>
+        <a href="/apache/cordova-js/blame/master/src/cordova.js" class="btn btn-sm js-update-url-with-hash">Blame</a>
+      <a href="/apache/cordova-js/commits/master/src/cordova.js" class="btn btn-sm " rel="nofollow">History</a>
+    </div>
+
+
+        <button type="button" class="octicon-btn disabled tooltipped tooltipped-nw"
+          aria-label="You must be signed in to make or propose changes">
+          <span class="octicon octicon-pencil"></span>
+        </button>
+        <button type="button" class="octicon-btn octicon-btn-danger disabled tooltipped tooltipped-nw"
+          aria-label="You must be signed in to make or propose changes">
+          <span class="octicon octicon-trashcan"></span>
+        </button>
+  </div>
+
+  <div class="file-info">
+      248 lines (228 sloc)
+      <span class="file-info-divider"></span>
+    8.62 KB
+  </div>
+</div>
+
+  
+
+  <div class="blob-wrapper data type-javascript">
+      <table class="highlight tab-size js-file-line-container" data-tab-size="8">
+      <tr>
+        <td id="L1" class="blob-num js-line-number" data-line-number="1"></td>
+        <td id="LC1" class="blob-code blob-code-inner js-file-line"><span class="pl-c">/*</span></td>
+      </tr>
+      <tr>
+        <td id="L2" class="blob-num js-line-number" data-line-number="2"></td>
+        <td id="LC2" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> *</span></td>
+      </tr>
+      <tr>
+        <td id="L3" class="blob-num js-line-number" data-line-number="3"></td>
+        <td id="LC3" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> * Licensed to the Apache Software Foundation (ASF) under one</span></td>
+      </tr>
+      <tr>
+        <td id="L4" class="blob-num js-line-number" data-line-number="4"></td>
+        <td id="LC4" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> * or more contributor license agreements.  See the NOTICE file</span></td>
+      </tr>
+      <tr>
+        <td id="L5" class="blob-num js-line-number" data-line-number="5"></td>
+        <td id="LC5" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> * distributed with this work for additional information</span></td>
+      </tr>
+      <tr>
+        <td id="L6" class="blob-num js-line-number" data-line-number="6"></td>
+        <td id="LC6" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> * regarding copyright ownership.  The ASF licenses this file</span></td>
+      </tr>
+      <tr>
+        <td id="L7" class="blob-num js-line-number" data-line-number="7"></td>
+        <td id="LC7" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> * to you under the Apache License, Version 2.0 (the</span></td>
+      </tr>
+      <tr>
+        <td id="L8" class="blob-num js-line-number" data-line-number="8"></td>
+        <td id="LC8" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> * &quot;License&quot;); you may not use this file except in compliance</span></td>
+      </tr>
+      <tr>
+        <td id="L9" class="blob-num js-line-number" data-line-number="9"></td>
+        <td id="LC9" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> * with the License.  You may obtain a copy of the License at</span></td>
+      </tr>
+      <tr>
+        <td id="L10" class="blob-num js-line-number" data-line-number="10"></td>
+        <td id="LC10" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> *</span></td>
+      </tr>
+      <tr>
+        <td id="L11" class="blob-num js-line-number" data-line-number="11"></td>
+        <td id="LC11" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> *   http://www.apache.org/licenses/LICENSE-2.0</span></td>
+      </tr>
+      <tr>
+        <td id="L12" class="blob-num js-line-number" data-line-number="12"></td>
+        <td id="LC12" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> *</span></td>
+      </tr>
+      <tr>
+        <td id="L13" class="blob-num js-line-number" data-line-number="13"></td>
+        <td id="LC13" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> * Unless required by applicable law or agreed to in writing,</span></td>
+      </tr>
+      <tr>
+        <td id="L14" class="blob-num js-line-number" data-line-number="14"></td>
+        <td id="LC14" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> * software distributed under the License is distributed on an</span></td>
+      </tr>
+      <tr>
+        <td id="L15" class="blob-num js-line-number" data-line-number="15"></td>
+        <td id="LC15" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> * &quot;AS IS&quot; BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY</span></td>
+      </tr>
+      <tr>
+        <td id="L16" class="blob-num js-line-number" data-line-number="16"></td>
+        <td id="LC16" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> * KIND, either express or implied.  See the License for the</span></td>
+      </tr>
+      <tr>
+        <td id="L17" class="blob-num js-line-number" data-line-number="17"></td>
+        <td id="LC17" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> * specific language governing permissions and limitations</span></td>
+      </tr>
+      <tr>
+        <td id="L18" class="blob-num js-line-number" data-line-number="18"></td>
+        <td id="LC18" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> * under the License.</span></td>
+      </tr>
+      <tr>
+        <td id="L19" class="blob-num js-line-number" data-line-number="19"></td>
+        <td id="LC19" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> *</span></td>
+      </tr>
+      <tr>
+        <td id="L20" class="blob-num js-line-number" data-line-number="20"></td>
+        <td id="LC20" class="blob-code blob-code-inner js-file-line"><span class="pl-c">*/</span></td>
+      </tr>
+      <tr>
+        <td id="L21" class="blob-num js-line-number" data-line-number="21"></td>
+        <td id="LC21" class="blob-code blob-code-inner js-file-line">
+</td>
+      </tr>
+      <tr>
+        <td id="L22" class="blob-num js-line-number" data-line-number="22"></td>
+        <td id="LC22" class="blob-code blob-code-inner js-file-line"><span class="pl-c">// Workaround for Windows 10 in hosted environment case</span></td>
+      </tr>
+      <tr>
+        <td id="L23" class="blob-num js-line-number" data-line-number="23"></td>
+        <td id="LC23" class="blob-code blob-code-inner js-file-line"><span class="pl-c">// http://www.w3.org/html/wg/drafts/html/master/browsers.html#named-access-on-the-window-object</span></td>
+      </tr>
+      <tr>
+        <td id="L24" class="blob-num js-line-number" data-line-number="24"></td>
+        <td id="LC24" class="blob-code blob-code-inner js-file-line"><span class="pl-k">if</span> (<span class="pl-c1">window</span>.cordova <span class="pl-k">&amp;&amp;</span> <span class="pl-k">!</span>(<span class="pl-c1">window</span>.cordova <span class="pl-k">instanceof</span> HTMLElement)) {</td>
+      </tr>
+      <tr>
+        <td id="L25" class="blob-num js-line-number" data-line-number="25"></td>
+        <td id="LC25" class="blob-code blob-code-inner js-file-line">    <span class="pl-k">throw</span> <span class="pl-k">new</span> <span class="pl-en">Error</span>(<span class="pl-s"><span class="pl-pds">&quot;</span>cordova already defined<span class="pl-pds">&quot;</span></span>);</td>
+      </tr>
+      <tr>
+        <td id="L26" class="blob-num js-line-number" data-line-number="26"></td>
+        <td id="LC26" class="blob-code blob-code-inner js-file-line">}</td>
+      </tr>
+      <tr>
+        <td id="L27" class="blob-num js-line-number" data-line-number="27"></td>
+        <td id="LC27" class="blob-code blob-code-inner js-file-line">
+</td>
+      </tr>
+      <tr>
+        <td id="L28" class="blob-num js-line-number" data-line-number="28"></td>
+        <td id="LC28" class="blob-code blob-code-inner js-file-line">
+</td>
+      </tr>
+      <tr>
+        <td id="L29" class="blob-num js-line-number" data-line-number="29"></td>
+        <td id="LC29" class="blob-code blob-code-inner js-file-line"><span class="pl-k">var</span> channel <span class="pl-k">=</span> <span class="pl-c1">require</span>(<span class="pl-s"><span class="pl-pds">&#39;</span>cordova/channel<span class="pl-pds">&#39;</span></span>);</td>
+      </tr>
+      <tr>
+        <td id="L30" class="blob-num js-line-number" data-line-number="30"></td>
+        <td id="LC30" class="blob-code blob-code-inner js-file-line"><span class="pl-k">var</span> platform <span class="pl-k">=</span> <span class="pl-c1">require</span>(<span class="pl-s"><span class="pl-pds">&#39;</span>cordova/platform<span class="pl-pds">&#39;</span></span>);</td>
+      </tr>
+      <tr>
+        <td id="L31" class="blob-num js-line-number" data-line-number="31"></td>
+        <td id="LC31" class="blob-code blob-code-inner js-file-line">
+</td>
+      </tr>
+      <tr>
+        <td id="L32" class="blob-num js-line-number" data-line-number="32"></td>
+        <td id="LC32" class="blob-code blob-code-inner js-file-line">
+</td>
+      </tr>
+      <tr>
+        <td id="L33" class="blob-num js-line-number" data-line-number="33"></td>
+        <td id="LC33" class="blob-code blob-code-inner js-file-line"><span class="pl-c">/**</span></td>
+      </tr>
+      <tr>
+        <td id="L34" class="blob-num js-line-number" data-line-number="34"></td>
+        <td id="LC34" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> * Intercept calls to addEventListener + removeEventListener and handle deviceready,</span></td>
+      </tr>
+      <tr>
+        <td id="L35" class="blob-num js-line-number" data-line-number="35"></td>
+        <td id="LC35" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> * resume, and pause events.</span></td>
+      </tr>
+      <tr>
+        <td id="L36" class="blob-num js-line-number" data-line-number="36"></td>
+        <td id="LC36" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> */</span></td>
+      </tr>
+      <tr>
+        <td id="L37" class="blob-num js-line-number" data-line-number="37"></td>
+        <td id="LC37" class="blob-code blob-code-inner js-file-line"><span class="pl-k">var</span> m_document_addEventListener <span class="pl-k">=</span> <span class="pl-c1">document</span>.addEventListener;</td>
+      </tr>
+      <tr>
+        <td id="L38" class="blob-num js-line-number" data-line-number="38"></td>
+        <td id="LC38" class="blob-code blob-code-inner js-file-line"><span class="pl-k">var</span> m_document_removeEventListener <span class="pl-k">=</span> <span class="pl-c1">document</span>.removeEventListener;</td>
+      </tr>
+      <tr>
+        <td id="L39" class="blob-num js-line-number" data-line-number="39"></td>
+        <td id="LC39" class="blob-code blob-code-inner js-file-line"><span class="pl-k">var</span> m_window_addEventListener <span class="pl-k">=</span> <span class="pl-c1">window</span>.addEventListener;</td>
+      </tr>
+      <tr>
+        <td id="L40" class="blob-num js-line-number" data-line-number="40"></td>
+        <td id="LC40" class="blob-code blob-code-inner js-file-line"><span class="pl-k">var</span> m_window_removeEventListener <span class="pl-k">=</span> <span class="pl-c1">window</span>.removeEventListener;</td>
+      </tr>
+      <tr>
+        <td id="L41" class="blob-num js-line-number" data-line-number="41"></td>
+        <td id="LC41" class="blob-code blob-code-inner js-file-line">
+</td>
+      </tr>
+      <tr>
+        <td id="L42" class="blob-num js-line-number" data-line-number="42"></td>
+        <td id="LC42" class="blob-code blob-code-inner js-file-line"><span class="pl-c">/**</span></td>
+      </tr>
+      <tr>
+        <td id="L43" class="blob-num js-line-number" data-line-number="43"></td>
+        <td id="LC43" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> * Houses custom event handlers to intercept on document + window event listeners.</span></td>
+      </tr>
+      <tr>
+        <td id="L44" class="blob-num js-line-number" data-line-number="44"></td>
+        <td id="LC44" class="blob-code blob-code-inner js-file-line"><span class="pl-c"> */</span></td>
+      </tr>
+      <tr>
+        <td id="L45" class="blob-num js-line-number" data-line-number="45"></td>
+        <td id="LC45" class="blob-code blob-code-inner js-file-line"><span class="pl-k">var</span> documentEventHandlers <span class="pl-k">=</span> {},</td>
+      </tr>
+      <tr>
+        <td id="L46" class="blob-num js-line-number" data-line-number="46"></td>
+        <td id="LC46" class="blob-code blob-code-inner js-file-line">    windowEventHandlers <span class="pl-k">=</span> {};</td>
+      </tr>
+      <tr>
+        <td id="L47" class="blob-num js-line-number" data-line-number="47"></td>
+        <td id="LC47" class="blob-code blob-code-inner js-file-line">
+</td>
+      </tr>
+      <tr>
+        <td id="L48" class="blob-num js-line-number" data-line-number="48"></td>
+        <td id="LC48" class="blob-code blob-code-inner js-file-line"><span class="pl-c1">document</span>.<span class="pl-en">addEventListener</span> <span class="pl-k">=</span> <span class="pl-k">function</span>(<span class="pl-smi">evt</span>, <span class="pl-smi">handler</span>, <span class="pl-smi">capture</span>) {</td>
+      </tr>
+      <tr>
+        <td id="L49" class="blob-num js-line-number" data-line-number="49"></td>
+        <td id="LC49" class="blob-code blob-code-inner js-file-line">    <span class="pl-k">var</span> e <span class="pl-k">=</span> evt.<span class="pl-c1">toLowerCase</span>();</td>
+      </tr>
+      <tr>
+        <td id="L50" class="blob-num js-line-number" data-line-number="50"></td>
+        <td id="LC50" class="blob-code blob-code-inner js-file-line">    <span class="pl-k">if</span> (<span class="pl-k">typeof</span> documentEventHandlers[e] <span class="pl-k">!=</span> <span class="pl-s"><span class="pl-pds">&#39;</span>undefined<span class="pl-pds">&#39;</span></span>) {</td>
+      </tr>
+      <tr>
+        <td id="L51" class="blob-num js-line-number" data-line-number="51"></td>
+        <td id="LC51" class="blob-code blob-code-inner js-file-line">        documentEventHandlers[e].subscribe(handler);</td>
+      </tr>
+      <tr>
+        <td id="L52" class="blob-num js-line-number" data-line-number="52"></td>
+        <td id="LC52" class="blob-code blob-code-inner js-file-line">    } <span class="pl-k">else</span> {</td>
+      </tr>
+      <tr>
+        <td id="L53" class="blob-num js-line-number" data-line-number="53"></td>
+        <td id="LC53" class="blob-code blob-code-inner js-file-line">        m_document_addEventListener.<span class="pl-c1">call</span>(<span class="pl-c1">document</span>, evt, handler, capture);</td>
+      </tr>
+      <tr>
+        <td id="L54" class="blob-num js-line-number" data-line-number="54"></td>
+        <td id="LC54" class="blob-code blob-code-inner js-file-line">    }</td>
+      </tr>
+      <tr>
+        <td id="L55" class="blob-num js-line-number" data-line-number="55"></td>
+        <td id="LC55" class="blob-code blob-code-inner js-file-line">};</td>
+      </tr>
+      <tr>
+        <td id="L56" class="blob-num js-line-number" data-line-number="56"></td>
+        <td id="LC56" class="blob-code blob-code-inner js-file-line">
+</td>
+      </tr>
+      <tr>
+        <td id="L57" class="blob-num js-line-number" data-line-number="57"></td>
+        <td id="LC57" class="blob-code blob-code-inner js-file-line"><span class="pl-c1">window</span>.<span class="pl-en">addEventListener</span> <span class="pl-k">=</span> <span class="pl-k">function</span>(<span class="pl-smi">evt</span>, <span class="pl-smi">handler</span>, <span class="pl-smi">capture</span>) {</td>
+      </tr>
+      <tr>
+        <td id="L58" class="blob-num js-line-number" data-line-number="58"></td>
+        <td id="LC58" class="blob-code blob-code-inner js-file-line">    <span class="pl-k">var</span> e <span class="pl-k">=</span> evt.<span class="pl-c1">toLowerCase</span>();</td>
+      </tr>
+      <tr>
+        <td id="L59" class="blob-num js-line-number" data-line-number="59"></td>
+        <td id="LC59" class="blob-code blob-code-inner js-file-line">    <span class="pl-k">if</span> (<span class="pl-k">typeof</span> windowEventHandlers[e] <span class="pl-k">!=</span> <span class="pl-s"><span class="pl-pds">&#39;</span>undefined<span class="pl-pds">&#39;</span></span>) {</td>
+      </tr>
+      <tr>
+        <td id="L60" class="blob-num js-line-number" data-line-number="60"></td>
+        <td id="LC60" class="blob-code blob-code-inner js-file-line">        windowEventHandlers[e].subscribe(handler);</td>
+      </tr>
+      <tr>
+        <td id="L61" class="blob-num js-line-number" data-line-number="61"></td>
+        <td id="LC61" class="blob-code blob-code-inner js-file-line">    } <span class="pl-k">else</span> {</td>
+      </tr>
+      <tr>
+        <td id="L62" class="blob-num js-line-number" data-line-number="62"></td>
+        <td id="LC62" class="blob-code blob-code-inner js-file-line">        m_window_addEventListener.<span class="pl-c1">call</span>(<span class="pl-c1">window</span>, evt, handler, capture);</td>
+      </tr>
+      <tr>
+        <td id="L63" class="blob-num js-line-number" data-line-number="63"></td>
+        <td id="LC63" class="blob-code blob-code-inner js-file-line">    }</td>
+      </tr>
+      <tr>
+        <td id="L64" class="blob-num js-line-number" data-line-number="64"></td>
+        <td id="LC64" class="blob-code blob-code-inner js-file-line">};</td>
+      </tr>
+      <tr>
+        <td id="L65" class="blob-num js-line-number" data-line-number="65"></td>
+        <td id="LC65" class="blob-code blob-code-inner js-file-line">
+</td>
+      </tr>
+      <tr>
+        <td id="L66" class="blob-num js-line-number" data-line-number="66"></td>
+        <td id="LC66" class="blob-code blob-code-inner js-file-line"><span class="pl-c1">document</span>.<span class="pl-en">removeEventListener</span> <span class="pl-k">=</span> <span class="pl-k">function</span>(<span class="pl-smi">evt</span>, <span class="pl-smi">handler</span>, <span class="pl-smi">capture</span>) {</td>
+      </tr>
+      <tr>
+        <td id="L67" class="blob-num js-line-number" data-line-number="67"></td>
+        <td id="LC67" class="blob-code blob-code-inner js-file-line">    <span class="pl-k">var</span> e <span class="pl-k">=</span> evt.<span class="pl-c1">toLowerCase</span>();</td>
+      </tr>
+      <tr>
+        <td id="L68" class="blob-num js-line-number" data-line-number="68"></td>
+        <td id="LC68" class="blob-code blob-code-inner js-file-line">    <span class="pl-c">// If unsubscribing from an event that is handled by a plugin</span></td>
+      </tr>
+      <tr>
+        <td id="L69" class="blob-num js-line-number" data-line-number="69"></td>
+        <td id="LC69" class="blob-code blob-code-inner js-file-line">    <span class="pl-k">if</span> (<span class="pl-k">typeof</span> documentEventHandlers[e] <span class="pl-k">!=</span> <span class="pl-s"><span class="pl-pds">&quot;</span>undefined<span class="pl-pds">&quot;</span></span>) {</td>
+      </tr>
+      <tr>
+        <td id="L70" class="blob-num js-line-number" data-line-number="70"></td>
+        <td id="LC70" class="blob-code blob-code-inner js-file-line">        documentEventHandlers[e].unsubscribe(handler);</td>
+      </tr>
+      <tr>
+        <td id="L71" class="blob-num js-line-number" data-line-number="71"></td>
+        <td id="LC71" class="blob-code blob-code-inner js-file-line">    } <span class="pl-k">else</span> {</td>
+      </tr>
+      <tr>
+        <td id="L72" class="blob-num js-line-number" data-line-number="72"></td>
+        <td id="LC72" class="blob-code blob-code-inner js-file-line">        m_document_removeEventListener.<span class="pl-c1">call</span>(<span class="pl-c1">document</span>, evt, handler, capture);</td>
+      </tr>
+      <tr>
+        <td id="L73" class="blob-num js-line-number" data-line-number="73"></td>
+        <td id="LC73" class="blob-code blob-code-inner js-file-line">    }</td>
+      </tr>
+      <tr>
+        <td id="L74" class="blob-num js-line-number" data-line-number="74"></td>
+        <td id="LC74" class="blob-code blob-code-inner js-file-line">};</td>
+      </tr>
+      <tr>
+        <td id="L75" class="blob-num js-line-number" data-line-number="75"></td>
+        <td id="LC75" class="blob-code blob-code-inner js-file-line">
+</td>
+      </tr>
+      <tr>
+        <td id="L76" class="blob-num js-line-number" data-line-number="76"></td>
+        <td id="LC76" class="blob-code blob-code-inner js-file-line"><span class="pl-c1">window</span>.<span class="pl-en">removeEventListener</span> <span class="pl-k">=</span> <span class="pl-k">function</span>(<span class="pl-smi">evt</span>, <span class="pl-smi">handler</span>, <span class="pl-smi">capture</span>) {</td>
+      </tr>
+      <tr>
+        <td id="L77" class="blob-num js-line-number" data-line-number="77"></td>
+        <td id="LC77" class="blob-code blob-code-inner js-file-line">    <span class="pl-k">var</span> e <span class="pl-k">=</span> evt.<span class="pl-c1">toLowerCase</span>();</td>
+      </tr>
+      <tr>
+        <td id="L78" class="blob-num js-line-number" data-line-number="78"></td>
+        <td id="LC78" class="blob-code blob-code-inner js-file-line">    <span class="pl-c">// If unsubscribing from an event that is handled by a plugin</span></td>
+      </tr>
+      <tr>
+        <td id="L79" class="blob-num js-line-number" data-line-number="79"></td>
+        <td id="LC79" class="blob-code blob-code-inner js-file-line">    <span class="pl-k">if</span> (<span class="pl-k">typeof</span> windowEventHandlers[e] <span class="pl-k">!=</span> <span class="pl-s"><span class="pl-pds">&quot;</span>undefined<span class="pl-pds">&quot;</span></span>) {</td>
+      </tr>
+      <tr>
+        <td id="L80" class="blob-num js-line-number" data-line-number="80"></td>
+        <td id="LC80" class="blob-code blob-code-inner js-file-line">        windowEventHandlers[e].unsubscribe(handler);</td>
+      </tr>
+      <tr>
+        <td id="L81" class="blob-num js-line-number" data-line-number="81"></td>
+        <td id="LC81" class="blob-code blob-code-inner js-file-line">    } <span class="pl-k">else</span> {</td>
+      </tr>
+      <tr>
+        <td id="L82" class="blob-num js-line-number" data-line-number="82"></td>
+        <td id="LC82" class="blob-code blob-code-inner js-file-line">        m_window_removeEventListener.<span class="pl-c1">call</span>(<span class="pl-c1">window</span>, evt, handler, capture);</td>
+      </tr>
+      <tr>
+        <td id="L83" class="blob-num js-line-number" data-line-number="83"></td>
+        <td id="LC83" class="blob-code blob-code-inner js-file-line">    }</td>
+      </tr>
+      <tr>
+        <td id="L84" class="blob-num js-line-number" data-line-number="84"></td>
+        <td id="LC84" class="blob-code blob-code-inner js-file-line">};</td>
+      </tr>
+      <tr>
+        <td id="L85" class="blob-num js-line-number" data-line-number="85"></td>
+        <td id="LC85" class="blob-code blob-code-inner js-file-line">
+</td>
+      </tr>
+      <tr>
+        <td id="L86" class="blob-num js-line-number" data-line-number="86"></td>
+        <td id="LC86" class="blob-code blob-code-inner js-file-line"><span class="pl-k">function</span> <span class="pl-en">createEvent</span>(<span class="pl-smi">type</span>, <span class="pl-smi">data</span>) {</td>
+      </tr>
+      <tr>
+        <td id="L87" class="blob-num js-line-number" data-line-number="87"></td>
+        <td id="LC87" class="blob-code blob-code-inner js-file-line">    <span class="pl-k">var</span> <span class="pl-c1">event</span> <span class="pl-k">=</span> <span class="pl-c1">document</span>.createEvent(<span class="pl-s"><span class="pl-pds">&#39;</span>Events<span class="pl-pds">&#39;</span></span>);</td>
+      </tr>
+      <tr>
+        <td id="L88" class="blob-num js-line-number" data-line-number="88"></td>
+        <td id="LC88" class="blob-code blob-code-inner js-file-line">    <span class="pl-c1">event</span>.initEvent(type, <span class="pl-c1">false</span>, <span class="pl-c1">false</span>);</td>
+      </tr>
+      <tr>
+        <td id="L89" class="blob-num js-line-number" data-line-number="89"></td>
+        <td id="LC89" class="blob-code blob-code-inner js-file-line">    <span class="pl-k">if</span> (data) {</td>
+      </tr>
+      <tr>
+        <td id="L90" class="blob-num js-line-number" data-line-number="90"></td>
+        <td id="LC90" class="blob-code blob-code-inner js-file-line">        <span class="pl-k">for</span> (<span class="pl-k">var</span> i <span class="pl-k">in</span> data) {</td>
+      </tr>
+      <tr>
+        <td id="L91" class="blob-num js-line-number" data-line-number="91"></td>
+        <td id="LC91" class="blob-code blob-code-inner js-file-line">            <span class="pl-k">if</span> (data.hasOwnProperty(i)) {</td>
+      </tr>
+      <tr>
+        <td id="L92" class="blob-num js-line-number" data-line-number="92"></td>
+        <td id="LC92" class="blob-code blob-code-inner js-file-line">                <span class="pl-c1">event</span>[i] <span class="pl-k">=</span> data[i];</td>
+      </tr>
+      <tr>
+        <td id="L93" class="blob-num js-line-number" data-line-number="93"></td>
+        <td id="LC93" class="blob-code blob-code-inner js-file-line">            }</td>
+      </tr>
+      <tr>
+        <td id="L94" class="blob-num js-line-number" data-line-number="94"></td>
+        <td id="LC94" class="blob-code blob-code-inner js-file-line">        }</td>
+      </tr>
+      <tr>
+        <td id="L95" class="blob-num js-line-number" data-line-number="95"></td>
+        <td id="LC95" class="blob-code blob-code-inner js-file-line">    }</td>
+      </tr>
+      <tr>
+        <td id="L96" class="blob-num js-line-number" data-line-number="96"></td>
+        <td id="LC96" class="blob-code blob-code-inner js-file-line">    <span class="pl-k">return</span> <span class="pl-c1">event</span>;</td>
+      </tr>
+      <tr>
+        <td id="L97" class="blob-num js-line-number" data-line-number="97"></td>
+        <td id="LC97" class="blob-code blob-code-inner js-file-line">}</td>
+      </tr>
+      <tr>
+        <td id="L98" class="blob-num js-line-number" data-line-number="98"></td>
+        <td id="LC98" class="blob-code blob-code-inner js-file-line">
+</td>
+      </tr>
+      <tr>
+        <td id="L99" class="blob-num js-line-number" data-line-number="99"></td>
+        <td id="LC99" class="blob-code blob-code-inner js-file-line">
+</td>
+      </tr>
+      <tr>
+        <td id="L100" class="blob-num js-line-number" data-line-number="100"></td>
+        <td id="LC100" class="blob-code blob-code-inner js-file-line"><span class="pl-k">var</span> cordova <span class="pl-k">=</span> {</td>
+      </tr>
+      <tr>
+        <td id="L101" class="blob-num js-line-number" data-line-number="101"></td>
+        <td id="LC101" class="blob-code blob-code-inner js-file-line">    define<span class="pl-k">:</span>define,</td>
+      </tr>
+      <tr>
+        <td id="L102" class="blob-num js-line-number" data-line-number="102"></td>
+        <td id="LC102" class="blob-code blob-code-inner js-file-line">    require<span class="pl-k">:</span><span class="pl-c1">require</span>,</td>
+      </tr>
+      <tr>
+        <td id="L103" class="blob-num js-line-number" data-line-number="103"></td>
+        <td id="LC103" class="blob-code blob-code-inner js-file-line">    version<span class="pl-k">:</span><span class="pl-c1">PLATFORM_VERSION_BUILD_LABEL</span>,</td>
+      </tr>
+      <tr>
+        <td id="L104" class="blob-num js-line-number" data-line-number="104"></td>
+        <td id="LC104" class="blob-code blob-code-inner js-file-line">    platformVersion<span class="pl-k">:</span><span class="pl-c1">PLATFORM_VERSION_BUILD_LABEL</span>,</td>
+      </tr>
+      <tr>
+        <td id="L105" class="blob-num js-line-number" data-line-number="105"></td>
+        <td id="LC105" class="blob-code blob-code-inner js-file-line">    platformId<span class="pl-k">:</span>platform.<span class="pl-c1">id</span>,</td>
+      </tr>
+      <tr>
+        <td id="L106" class="blob-num js-line-number" data-line-number="106"></td>
+        <td id="LC106" class="blob-code blob-code-inner js-file-line">    <span class="pl-c">/**</span></td>
+      </tr>
+      <tr>
+        <td id="L107" class="blob-num js-line-number" data-line-number="107"></td>
+        <td id="LC107" class="blob-code blob-code-inner js-file-line"><span class="pl-c">     * Methods to add/remove your own addEventListener hijacking on document + window.</span></td>
+      </tr>
+      <tr>
+        <td id="L108" class="blob-num js-line-number" data-line-number="108"></td>
+        <td id="LC108" class="blob-code blob-code-inner js-file-line"><span class="pl-c">     */</span></td>
+      </tr>
+      <tr>
+        <td id="L109" class="blob-num js-line-number" data-line-number="109"></td>
+        <td id="LC109" class="blob-code blob-code-inner js-file-line">    <span class="pl-en">addWindowEventHandler</span><span class="pl-k">:</span><span class="pl-k">function</span>(<span class="pl-smi">event</span>) {</td>
+      </tr>
+      <tr>
+        <td id="L110" class="blob-num js-line-number" data-line-number="110"></td>
+        <td id="LC110" class="blob-code blob-code-inner js-file-line">        <span class="pl-k">return</span> (windowEventHandlers[<span class="pl-c1">event</span>] <span class="pl-k">=</span> channel.create(<span class="pl-c1">event</span>));</td>
+      </tr>
+      <tr>
+        <td id="L111" class="blob-num js-line-number" data-line-number="111"></td>
+        <td id="LC111" class="blob-code blob-code-inner js-file-line">    },</td>
+      </tr>
+      <tr>
+        <td id="L112" class="blob-num js-line-number" data-line-number="112"></td>
+        <td id="LC112" class="blob-code blob-code-inner js-file-line">    <span class="pl-en">addStickyDocumentEventHandler</span><span class="pl-k">:</span><span class="pl-k">function</span>(<span class="pl-smi">event</span>) {</td>
+      </tr>
+      <tr>
+        <td id="L113" class="blob-num js-line-number" data-line-number="113"></td>
+        <td id="LC113" class="blob-code blob-code-inner js-file-line">        <span class="pl-k">return</span> (documentEventHandlers[<span class="pl-c1">event</span>] <span class="pl-k">=</span> channel.createSticky(<span class="pl-c1">event</span>));</td>
+      </tr>
+      <tr>
+        <td id="L114" class="blob-num js-line-number" data-line-number="114"></td>
+        <td id="LC114" class="blob-code blob-code-inner js-file-line">    },</td>
+      </tr>
+      <tr>
+        <td id="L115" class="blob-num js-line-number" data-line-number="115"></td>
+        <td id="LC115" class="blob-code blob-code-inner js-file-line">    <span class="pl-en">addDocumentEventHandler</span><span class="pl-k">:</span><span class="pl-k">function</span>(<span class="pl-smi">event</span>) {</td>
+      </tr>
+      <tr>
+        <td id="L116" class="blob-num js-line-number" data-line-number="116"></td>
+        <td id="LC116" class="blob-code blob-code-inner js-file-line">        <span class="pl-k">return</span> (documentEventHandlers[<span class="pl-c1">event</span>] <span class="pl-k">=</span> channel.create(<span class="pl-c1">event</span>));</td>
+      </tr>
+      <tr>
+        <td id="L117" class="blob-num js-line-number" data-line-number="117"></td>
+        <td id="LC117" class="blob-code blob-code-inner js-file-line">    },</td>
+      </tr>
+      <tr>
+        <td id="L118" class="blob-num js-line-number" data-line-number="118"></td>
+        <td id="LC118" class="blob-code blob-code-inner js-file-line">    <span class="pl-en">removeWindowEventHandler</span><span class="pl-k">:</span><span class="pl-k">function</span>(<span class="pl-smi">event</span>) {</td>
+      </tr>
+      <tr>
+        <td id="L119" class="blob-num js-line-number" data-line-number="119"></td>
+        <td id="LC119" class="blob-code blob-code-inner js-file-line">        <span class="pl-k">delete</span> windowEventHandlers[<span class="pl-c1">event</span>];</td>
+      </tr>
+      <tr>
+        <td id="L120" class="blob-num js-line-number" data-line-number="120"></td>
+        <td id="LC120" class="blob-code blob-code-inner js-file-line">    },</td>
+      </tr>
+      <tr>
+        <td id="L121" class="blob-num js-line-number" data-line-number="121"></td>
+        <td id="LC121" class="blob-code blob-code-inner js-file-line">    <span class="pl-en">removeDocumentEventHandler</span><span class="pl-k">:</span><span class="pl-k">function</span>(<span class="pl-smi">event</span>) {</td>
+      </tr>
+      <tr>
+        <td id="L122" class="blob-num js-line-number" data-line-number="122"></td>
+        <td id="LC122" class="blob-code blob-code-inner js-file-line">        <span class="pl-k">delete</span> documentEventHandlers[<span class="pl-c1">event</span>];</td>
+      </tr>
+      <tr>
+        <td id="L123" class="blob-num js-line-number" data-line-number="123"></td>
+        <td id="LC123" class="blob-code blob-code-inner js-file-line">    },</td>
+      </tr>
+      <tr>
+        <td id="L124" class="blob-num js-line-number" data-line-number="124"></td>
+        <td id="LC124" class="blob-code blob-code-inner js-file-line">    <span class="pl-c">/**</span></td>
+      </tr>
+      <tr>
+        <td id="L125" class="blob-num js-line-number" data-line-number="125"></td>
+        <td id="LC125" class="blob-code blob-code-inner js-file-line"><span class="pl-c">     * Retrieve original event handlers that were replaced by Cordova</span></td>
+      </tr>
+      <tr>
+        <td id="L126" class="blob-num js-line-number" data-line-number="126"></td>
+        <td id="LC126" class="blob-code blob-code-inner js-file-line"><span class="pl-c">     *</span></td>
+      </tr>
+      <tr>
+        <td id="L127" class="blob-num js-line-number" data-line-number="127"></td>
+        <td id="LC127" class="blob-code blob-code-inner js-file-line"><span class="pl-c">     * <span class="pl-k">@return</span> object</span></td>
+      </tr>
+      <tr>
+        <td id="L128" class="blob-num js-line-number" data-line-number="128"></td>
+        <td id="LC128" class="blob-code blob-code-inner js-file-line"><span class="pl-c">     */</span></td>
+      </tr>
+      <tr>
+        <td id="L129" class="blob-num js-line-number" data-line-number="129"></td>
+        <td id="LC129" class="blob-code blob-code-inner js-file-line">    <span class="pl-en">getOriginalHandlers</span><span class="pl-k">:</span> <span class="pl-k">function</span>() {</td>
+      </tr>
+      <tr>
+        <td id="L130" class="blob-num js-line-number" data-line-number="130"></td>
+        <td id="LC130" class="blob-code blob-code-inner js-file-line">        <span class="pl-k">return</span> {<span class="pl-s"><span class="pl-pds">&#39;</span>document<span class="pl-pds">&#39;</span></span><span class="pl-k">:</span> {<span class="pl-s"><span class="pl-pds">&#39;</span>addEventListener<span class="pl-pds">&#39;</span></span><span class="pl-k">:</span> m_document_addEventListener, <span class="pl-s"><span class="pl-pds">&#39;</span>removeEventListener<span class="pl-pds">&#39;</span></span><span class="pl-k">:</span> m_document_removeEventListener},</td>
+      </tr>
+      <tr>
+        <td id="L131" class="blob-num js-line-number" data-line-number="131"></td>
+        <td id="LC131" class="blob-code blob-code-inner js-file-line">        <span class="pl-s"><span class="pl-pds">&#39;</span>window<span class="pl-pds">&#39;</span></span><span class="pl-k">:</span> {<span class="pl-s"><span class="pl-pds">&#39;</span>addEventListener<span class="pl-pds">&#39;</span></span><span class="pl-k">:</span> m_window_addEventListener, <span class="pl-s"><span class="pl-pds">&#39;</span>removeEventListener<span class="pl-pds">&#39;</span></span><span class="pl-k">:</span> m_window_removeEventListener}};</td>
+      </tr>
+      <tr>
+        <td id="L132" class="blob-num js-line-number" data-line-number="132"></td>
+        <td id="LC132" class="blob-code blob-code-inner js-file-line">    },</td>
+      </tr>
+      <tr>
+        <td id="L133" class="blob-num js-line-number" data-line-number="133"></td>
+        <td id="LC133" class="blob-code blob-code-inner js-file-line">    <span class="pl-c">/**</span></td>
+      </tr>
+      <tr>
+        <td id="L134" class="blob-num js-line-number" data-line-number="134"></td>
+        <td id="LC134" class="blob-code blob-code-inner js-file-line"><span class="pl-c">     * Method to fire event from native code</span></td>
+      </tr>
+      <tr>
+        <td id="L135" class="blob-num js-line-number" data-line-number="135"></td>
+        <td id="LC135" class="blob-code blob-code-inner js-file-line"><span class="pl-c">     * bNoDetach is required for events which cause an exception which needs to be caught in native code</span></td>
+      </tr>
+      <tr>
+        <td id="L136" class="blob-num js-line-number" data-line-number="136"></td>
+        <td id="LC136" class="blob-code blob-code-inner js-file-line"><span class="pl-c">     */</span></td>
+      </tr>
+      <tr>
+        <td id="L137" class="blob-num js-line-number" data-line-number="137"></td>
+        <td id="LC137" class="blob-code blob-code-inner js-file-line">    <span class="pl-en">fireDocumentEvent</span><span class="pl-k">:</span> <span class="pl-k">function</span>(<span class="pl-smi">type</span>, <span class="pl-smi">data</span>, <span class="pl-smi">bNoDetach</span>) {</td>
+      </tr>
+      <tr>
+        <td id="L138" class="blob-num js-line-number" data-line-number="138"></td>
+        <td id="LC138" class="blob-code blob-code-inner js-file-line">        <span class="pl-k">var</span> evt <span class="pl-k">=</span> createEvent(type, data);</td>
+      </tr>
+      <tr>
+        <td id="L139" class="blob-num js-line-number" data-line-number="139"></td>
+        <td id="LC139" class="blob-code blob-code-inner js-file-line">        <span class="pl-k">if</span> (<span class="pl-k">typeof</span> documentEventHandlers[type] <span class="pl-k">!=</span> <span class="pl-s"><span class="pl-pds">&#39;</span>undefined<span class="pl-pds">&#39;</span></span>) {</td>
+      </tr>
+      <tr>
+        <td id="L140" class="blob-num js-line-number" data-line-number="140"></td>
+        <td id="LC140" class="blob-code blob-code-inner js-file-line">            <span class="pl-k">if</span>( bNoDetach ) {</td>
+      </tr>
+      <tr>
+        <td id="L141" class="blob-num js-line-number" data-line-number="141"></td>
+        <td id="LC141" class="blob-code blob-code-inner js-file-line">                documentEventHandlers[type].fire(evt);</td>
+      </tr>
+      <tr>
+        <td id="L142" class="blob-num js-line-number" data-line-number="142"></td>
+        <td id="LC142" class="blob-code blob-code-inner js-file-line">            }</td>
+      </tr>
+      <tr>
+        <td id="L143" class="blob-num js-line-number" data-line-number="143"></td>
+        <td id="LC143" class="blob-code blob-code-inner js-file-line">            <span class="pl-k">else</span> {</td>
+      </tr>
+      <tr>
+        <td id="L144" class="blob-num js-line-number" data-line-number="144"></td>
+        <td id="LC144" class="blob-code blob-code-inner js-file-line">                <span class="pl-c1">setTimeout</span>(<span class="pl-k">function</span>() {</td>
+      </tr>
+      <tr>
+        <td id="L145" class="blob-num js-line-number" data-line-number="145"></td>
+        <td id="LC145" class="blob-code blob-code-inner js-file-line">                    <span class="pl-c">// Fire deviceready on listeners that were registered before cordova.js was loaded.</span></td>
+      </tr>
+      <tr>
+        <td id="L146" class="blob-num js-line-number" data-line-number="146"></td>
+        <td id="LC146" class="blob-code blob-code-inner js-file-line">                    <span class="pl-k">if</span> (type <span class="pl-k">==</span> <span class="pl-s"><span class="pl-pds">&#39;</span>deviceready<span class="pl-pds">&#39;</span></span>) {</td>
+      </tr>
+      <tr>
+        <td id="L147" class="blob-num js-line-number" data-line-number="147"></td>
+        <td id="LC147" class="blob-code blob-code-inner js-file-line">                        <span class="pl-c1">document</span>.dispatchEvent(evt);</td>
+      </tr>
+      <tr>
+        <td id="L148" class="blob-num js-line-number" data-line-number="148"></td>
+        <td id="LC148" class="blob-code blob-code-inner js-file-line">                    }</td>
+      </tr>
+      <tr>
+        <td id="L149" class="blob-num js-line-number" data-line-number="149"></td>
+        <td id="LC149" class="blob-code blob-code-inner js-file-line">                    documentEventHandlers[type].fire(evt);</td>
+      </tr>
+      <tr>
+        <td id="L150" class="blob-num js-line-number" data-line-number="150"></td>
+        <td id="LC150" class="blob-code blob-code-inner js-file-line">                }, <span class="pl-c1">0</span>);</td>
+      </tr>
+      <tr>
+        <td id="L151" class="blob-num js-line-number" data-line-number="151"></td>
+        <td id="LC151" class="blob-code blob-code-inner js-file-line">            }</td>
+      </tr>
+      <tr>
+        <td id="L152" class="blob-num js-line-number" data-line-number="152"></td>
+        <td id="LC152" class="blob-code blob-code-inner js-file-line">        } <span class="pl-k">else</span> {</td>
+      </tr>
+      <tr>
+        <td id="L153" class="blob-num js-line-number" data-line-number="153"></td>
+        <td id="LC153" class="blob-code blob-code-inner js-file-line">            <span class="pl-c1">document</span>.dispatchEvent(evt);</td>
+      </tr>
+      <tr>
+        <td id="L154" class="blob-num js-line-number" data-line-number="154"></td>
+        <td id="LC154" class="blob-code blob-code-inner js-file-line">        }</td>
+      </tr>
+      <tr>
+        <td id="L155" class="blob-num js-line-number" data-line-number="155"></td>
+        <td id="LC155" class="blob-code blob-code-inner js-file-line">    },</td>
+      </tr>
+      <tr>
+        <td id="L156" class="blob-num js-line-number" data-line-number="156"></td>
+        <td id="LC156" class="blob-code blob-code-inner js-file-line">    <span class="pl-en">fireWindowEvent</span><span class="pl-k">:</span> <span class="pl-k">function</span>(<span class="pl-smi">type</span>, <span class="pl-smi">data</span>) {</td>
+      </tr>
+      <tr>
+        <td id="L157" class="blob-num js-line-number" data-line-number="157"></td>
+        <td id="LC157" class="blob-code blob-code-inner js-file-line">        <span class="pl-k">var</span> evt <span class="pl-k">=</span> createEvent(type,data);</td>
+      </tr>
+      <tr>
+        <td id="L158" class="blob-num js-line-number" data-line-number="158"></td>
+        <td id="LC158" class="blob-code blob-code-inner js-file-line">        <span class="pl-k">if</span> (<span class="pl-k">typeof</span> windowEventHandlers[type] <span class="pl-k">!=</span> <span class="pl-s"><span class="pl-pds">&#39;</span>undefined<span class="pl-pds">&#39;</span></span>) {</td>
+      </tr>
+      <tr>
+        <td id="L159" class="blob-num js-line-number" data-line-number="159"></td>
+        <td id="LC159" class="blob-code blob-code-inner js-file-line">            <span class="pl-c1">setTimeout</span>(<span class="pl-k">function</span>() {</td>
+      </tr>
+      <tr>
+        <td id="L160" class="blob-num js-line-number" data-line-number="160"></td>
+        <td id="LC160" class="blob-code blob-code-inner js-file-line">                windowEventHandlers[type].fire(evt);</td>
+      </tr>
+      <tr>
+        <td id="L161" class="blob-num js-line-number" data-line-number="161"></td>
+        <td id="LC161" class="blob-code blob-code-inner js-file-line">            }, <span class="pl-c1">0</span>);</td>
+      </tr>
+      <tr>
+        <td id="L162" class="blob-num js-line-number" data-line-number="162"></td>
+        <td id="LC162" class="blob-code blob-code-inner js-file-line">        } <span class="pl-k">else</span> {</td>
+      </tr>
+      <tr>
+        <td id="L163" class="blob-num js-line-number" data-line-number="163"></td>
+        <td id="LC163" class="blob-code blob-code-inner js-file-line">            <span class="pl-c1">window</span>.dispatchEvent(evt);</td>
+      </tr>
+      <tr>
+        <td id="L164" class="blob-num js-line-number" data-line-number="164"></td>
+        <td id="LC164" class="blob-code blob-code-inner js-file-line">        }</td>
+      </tr>
+      <tr>
+        <td id="L165" class="blob-num js-line-number" data-line-number="165"></td>
+        <td id="LC165" class="blob-code blob-code-inner js-file-line">    },</td>
+      </tr>
+      <tr>
+        <td id="L166" class="blob-num js-line-number" data-line-number="166"></td>
+        <td id="LC166" class="blob-code blob-code-inner js-file-line">
+</td>
+      </tr>
+      <tr>
+        <td id="L167" class="blob-num js-line-number" data-line-number="167"></td>
+        <td id="LC167" class="blob-code blob-code-inner js-file-line">    <span class="pl-c">/**</span></td>
+      </tr>
+      <tr>
+        <td id="L168" class="blob-num js-line-number" data-line-number="168"></td>
+        <td id="LC168" class="blob-code blob-code-inner js-file-line"><span class="pl-c">     * Plugin callback mechanism.</span></td>
+      </tr>
+      <tr>
+        <td id="L169" class="blob-num js-line-number" data-line-number="169"></td>
+        <td id="LC169" class="blob-code blob-code-inner js-file-line"><span class="pl-c">     */</span></td>
+      </tr>
+      <tr>
+        <td id="L170" class="blob-num js-line-number" data-line-number="170"></td>
+        <td id="LC170" class="blob-code blob-code-inner js-file-line">    <span class="pl-c">// Randomize the starting callbackId to avoid collisions after refreshing or navigating.</span></td>
+      </tr>
+      <tr>
+        <td id="L171" class="blob-num js-line-number" data-line-number="171"></td>
+        <td id="LC171" class="blob-code blob-code-inner js-file-line">    <span class="pl-c">// This way, it&#39;s very unlikely that any new callback would get the same callbackId as an old callback.</span></td>
+      </tr>
+      <tr>
+        <td id="L172" class="blob-num js-line-number" data-line-number="172"></td>
+        <td id="LC172" class="blob-code blob-code-inner js-file-line">    callbackId<span class="pl-k">:</span> <span class="pl-c1">Math</span>.<span class="pl-c1">floor</span>(<span class="pl-c1">Math</span>.<span class="pl-c1">random</span>() <span class="pl-k">*</span> <span class="pl-c1">2000000000</span>),</td>
+      </tr>
+      <tr>
+        <td id="L173" class="blob-num js-line-number" data-line-number="173"></td>
+        <td id="LC173" class="blob-code blob-code-inner js-file-line">    callbacks<span class="pl-k">:</span>  {},</td>
+      </tr>
+      <tr>
+        <td id="L174" class="blob-num js-line-number" data-line-number="174"></td>
+        <td id="LC174" class="blob-code blob-code-inner js-file-line">    callbackStatus<span class="pl-k">:</span> {</td>
+      </tr>
+      <tr>
+        <td id="L175" class="blob-num js-line-number" data-line-number="175"></td>
+        <td id="LC175" class="blob-code blob-code-inner js-file-line">        NO_RESULT<span class="pl-k">:</span> <span class="pl-c1">0</span>,</td>
+      </tr>
+      <tr>
+        <td id="L176" class="blob-num js-line-number" data-line-number="176"></td>
+        <td id="LC176" class="blob-code blob-code-inner js-file-line">        OK<span class="pl-k">:</span> <span class="pl-c1">1</span>,</td>
+      </tr>
+      <tr>
+        <td id="L177" class="blob-num js-line-number" data-line-number="177"></td>
+        <td id="LC177" class="blob-code blob-code-inner js-file-line">        CLASS_NOT_FOUND_EXCEPTION<span class="pl-k">:</span> <span class="pl-c1">2</span>,</td>
+      </tr>
+      <tr>
+        <td id="L178" class="blob-num js-line-number" data-line-number="178"></td>
+        <td id="LC178" class="blob-code blob-code-inner js-file-line">        ILLEGAL_ACCESS_EXCEPTION<span class="pl-k">:</span> <span class="pl-c1">3</span>,</td>
+      </tr>
+      <tr>
+        <td id="L179" class="blob-num js-line-number" data-line-number="179"></td>
+        <td id="LC179" class="blob-code blob-code-inner js-file-line">        INSTANTIATION_EXCEPTION<span class="pl-k">:</span> <span class="pl-c1">4</span>,</td>
+      </tr>
+      <tr>
+        <td id="L180" class="blob-num js-line-number" data-line-number="180"></td>
+        <td id="LC180" class="blob-code blob-code-inner js-file-line">        MALFORMED_URL_EXCEPTION<span class="pl-k">:</span> <span class="pl-c1">5</span>,</td>
+      </tr>
+      <tr>
+        <td id="L181" class="blob-num js-line-number" data-line-number="181"></td>
+        <td id="LC181" class="blob-code blob-code-inner js-file-line">        IO_EXCEPTION<span class="pl-k">:</span> <span class="pl-c1">6</span>,</td>
+      </tr>
+      <tr>
+        <td id="L182" class="blob-num js-line-number" data-line-number="182"></td>
+        <td id="LC182" class="blob-code blob-code-inner js-file-line">        INVALID_ACTION<span class="pl-k">:</span> <span class="pl-c1">7</span>,</td>
+      </tr>
+      <tr>
+        <td id="L183" class="blob-num js-line-number" data-line-number="183"></td>
+        <td id="LC183" class="blob-code blob-code-inner js-file-line">        JSON_EXCEPTION<span class="pl-k">:</span> <span class="pl-c1">8</span>,</td>
+      </tr>
+      <tr>
+        <td id="L184" class="blob-num js-line-number" data-line-number="184"></td>
+        <td id="LC184" class="blob-code blob-code-inner js-file-line">        ERROR<span class="pl-k">:</span> <span class="pl-c1">9</span></td>
+      </tr>
+      <tr>
+        <td id="L185" class="blob-num js-line-number" data-line-number="185"></td>
+        <td id="LC185" class="blob-code blob-code-inner js-file-line">    },</td>
+      </tr>
+      <tr>
+        <td id="L186" class="blob-num js-line-number" data-line-number="186"></td>
+        <td id="LC186" class="blob-code blob-code-inner js-file-line">
+</td>
+      </tr>
+      <tr>
+        <td id="L187" class="blob-num js-line-number" data-line-number="187"></td>
+        <td id="LC187" class="blob-code blob-code-inner js-file-line">    <span class="pl-c">/**</span></td>
+      </tr>
+      <tr>
+        <td id="L188" class="blob-num js-line-number" data-line-number="188"></td>
+        <td id="LC188" class="blob-code blob-code-inner js-file-line"><span class="pl-c">     * Called by native code when returning successful result from an action.</span></td>
+      </tr>
+      <tr>
+        <td id="L189" class="blob-num js-line-number" data-line-number="189"></td>
+        <td id="LC189" class="blob-code blob-code-inner js-file-line"><span class="pl-c">     */</span></td>
+      </tr>
+      <tr>
+        <td id="L190" class="blob-num js-line-number" data-line-number="190"></td>
+        <td id="LC190" class="blob-code blob-code-inner js-file-line">    <span class="pl-en">callbackSuccess</span><span class="pl-k">:</span> <span class="pl-k">function</span>(<span class="pl-smi">callbackId</span>, <span class="pl-smi">args</span>) {</td>
+      </tr>
+      <tr>
+        <td id="L191" class="blob-num js-line-number" data-line-number="191"></td>
+        <td id="LC191" class="blob-code blob-code-inner js-file-line">        cordova.callbackFromNative(callbackId, <span class="pl-c1">true</span>, args.<span class="pl-c1">status</span>, [args.message], args.keepCallback);</td>
+      </tr>
+      <tr>
+        <td id="L192" class="blob-num js-line-number" data-line-number="192"></td>
+        <td id="LC192" class="blob-code blob-code-inner js-file-line">    },</td>
+      </tr>
+      <tr>
+        <td id="L193" class="blob-num js-line-number" data-line-number="193"></td>
+        <td id="LC193" class="blob-code blob-code-inner js-file-line">
+</td>
+      </tr>
+      <tr>
+        <td id="L194" class="blob-num js-line-number" data-line-number="194"></td>
+        <td id="LC194" class="blob-code blob-code-inner js-file-line">    <span class="pl-c">/**</span></td>
+      </tr>
+      <tr>
+        <td id="L195" class="blob-num js-line-number" data-line-number="195"></td>
+        <td id="LC195" class="blob-code blob-code-inner js-file-line"><span class="pl-c">     * Called by native code when returning error result from an action.</span></td>
+      </tr>
+      <tr>
+        <td id="L196" class="blob-num js-line-number" data-line-number="196"></td>
+        <td id="LC196" class="blob-code blob-code-inner js-file-line"><span class="pl-c">     */</span></td>
+      </tr>
+      <tr>
+        <td id="L197" class="blob-num js-line-number" data-line-number="197"></td>
+        <td id="LC197" class="blob-code blob-code-inner js-file-line">    <span class="pl-en">callbackError</span><span class="pl-k">:</span> <span class="pl-k">function</span>(<span class="pl-smi">callbackId</span>, <span class="pl-smi">args</span>) {</td>
+      </tr>
+      <tr>
+        <td id="L198" class="blob-num js-line-number" data-line-number="198"></td>
+        <td id="LC198" class="blob-code blob-code-inner js-file-line">        <span class="pl-c">// TODO: Deprecate callbackSuccess and callbackError in favour of callbackFromNative.</span></td>
+      </tr>
+      <tr>
+        <td id="L199" class="blob-num js-line-number" data-line-number="199"></td>
+        <td id="LC199" class="blob-code blob-code-inner js-file-line">        <span class="pl-c">// Derive success from status.</span></td>
+      </tr>
+      <tr>
+        <td id="L200" class="blob-num js-line-number" data-line-number="200"></td>
+        <td id="LC200" class="blob-code blob-code-inner js-file-line">        cordova.callbackFromNative(callbackId, <span class="pl-c1">false</span>, args.<span class="pl-c1">status</span>, [args.message], args.keepCallback);</td>
+      </tr>
+      <tr>
+        <td id="L201" class="blob-num js-line-number" data-line-number="201"></td>
+        <td id="LC201" class="blob-code blob-code-inner js-file-line">    },</td>
+      </tr>
+      <tr>
+        <td id="L202" class="blob-num js-line-number" data-line-number="202"></td>
+        <td id="LC202" class="blob-code blob-code-inner js-file-line">
+</td>
+      </tr>
+      <tr>
+        <td id="L203" class="blob-num js-line-number" data-line-number="203"></td>
+        <td id="LC203" class="blob-code blob-code-inner js-file-line">    <span class="pl-c">/**</span></td>
+      </tr>
+      <tr>
+        <td id="L204" class="blob-num js-line-number" data-line-number="204"></td>
+        <td id="LC204" class="blob-code blob-code-inner js-file-line"><span class="pl-c">     * Called by native code when returning the result from an action.</span></td>
+      </tr>
+      <tr>
+        <td id="L205" class="blob-num js-line-number" data-line-number="205"></td>
+        <td id="LC205" class="blob-code blob-code-inner js-file-line"><span class="pl-c">     */</span></td>
+      </tr>
+      <tr>
+        <td id="L206" class="blob-num js-line-number" data-line-number="206"></td>
+        <td id="LC206" class="blob-code blob-code-inner js-file-line">    <span class="pl-en">callbackFromNative</span><span class="pl-k">:</span> <span class="pl-k">function</span>(<span class="pl-smi">callbackId</span>, <span class="pl-smi">isSuccess</span>, <span class="pl-smi">status</span>, <span class="pl-smi">args</span>, <span class="pl-smi">keepCallback</span>) {</td>
+      </tr>
+      <tr>
+        <td id="L207" class="blob-num js-line-number" data-line-number="207"></td>
+        <td id="LC207" class="blob-code blob-code-inner js-file-line">        <span class="pl-k">try</span> {</td>
+      </tr>
+      <tr>
+        <td id="L208" class="blob-num js-line-number" data-line-number="208"></td>
+        <td id="LC208" class="blob-code blob-code-inner js-file-line">            <span class="pl-k">var</span> callback <span class="pl-k">=</span> cordova.callbacks[callbackId];</td>
+      </tr>
+      <tr>
+        <td id="L209" class="blob-num js-line-number" data-line-number="209"></td>
+        <td id="LC209" class="blob-code blob-code-inner js-file-line">            <span class="pl-k">if</span> (callback) {</td>
+      </tr>
+      <tr>
+        <td id="L210" class="blob-num js-line-number" data-line-number="210"></td>
+        <td id="LC210" class="blob-code blob-code-inner js-file-line">                <span class="pl-k">if</span> (isSuccess <span class="pl-k">&amp;&amp;</span> status <span class="pl-k">==</span> cordova.callbackStatus.OK) {</td>
+      </tr>
+      <tr>
+        <td id="L211" class="blob-num js-line-number" data-line-number="211"></td>
+        <td id="LC211" class="blob-code blob-code-inner js-file-line">                    callback.success <span class="pl-k">&amp;&amp;</span> callback.success.<span class="pl-c1">apply</span>(<span class="pl-c1">null</span>, args);</td>
+      </tr>
+      <tr>
+        <td id="L212" class="blob-num js-line-number" data-line-number="212"></td>
+        <td id="LC212" class="blob-code blob-code-inner js-file-line">                } <span class="pl-k">else</span> <span class="pl-k">if</span> (<span class="pl-k">!</span>isSuccess) {</td>
+      </tr>
+      <tr>
+        <td id="L213" class="blob-num js-line-number" data-line-number="213"></td>
+        <td id="LC213" class="blob-code blob-code-inner js-file-line">                    callback.fail <span class="pl-k">&amp;&amp;</span> callback.fail.<span class="pl-c1">apply</span>(<span class="pl-c1">null</span>, args);</td>
+      </tr>
+      <tr>
+        <td id="L214" class="blob-num js-line-number" data-line-number="214"></td>
+        <td id="LC214" class="blob-code blob-code-inner js-file-line">                }</td>
+      </tr>
+      <tr>
+        <td id="L215" class="blob-num js-line-number" data-line-number="215"></td>
+        <td id="LC215" class="blob-code blob-code-inner js-file-line">                <span class="pl-c">/*</span></td>
+      </tr>
+      <tr>
+        <td id="L216" class="blob-num js-line-number" data-line-number="216"></td>
+        <td id="LC216" class="blob-code blob-code-inner js-file-line"><span class="pl-c">                else</span></td>
+      </tr>
+      <tr>
+        <td id="L217" class="blob-num js-line-number" data-line-number="217"></td>
+        <td id="LC217" class="blob-code blob-code-inner js-file-line"><span class="pl-c">                    Note, this case is intentionally not caught.</span></td>
+      </tr>
+      <tr>
+        <td id="L218" class="blob-num js-line-number" data-line-number="218"></td>
+        <td id="LC218" class="blob-code blob-code-inner js-file-line"><span class="pl-c">                    this can happen if isSuccess is true, but callbackStatus is NO_RESULT</span></td>
+      </tr>
+      <tr>
+        <td id="L219" class="blob-num js-line-number" data-line-number="219"></td>
+        <td id="LC219" class="blob-code blob-code-inner js-file-line"><span class="pl-c">                    which is used to remove a callback from the list without calling the callbacks</span></td>
+      </tr>
+      <tr>
+        <td id="L220" class="blob-num js-line-number" data-line-number="220"></td>
+        <td id="LC220" class="blob-code blob-code-inner js-file-line"><span class="pl-c">                    typically keepCallback is false in this case</span></td>
+      </tr>
+      <tr>
+        <td id="L221" class="blob-num js-line-number" data-line-number="221"></td>
+        <td id="LC221" class="blob-code blob-code-inner js-file-line"><span class="pl-c">                */</span></td>
+      </tr>
+      <tr>
+        <td id="L222" class="blob-num js-line-number" data-line-number="222"></td>
+        <td id="LC222" class="blob-code blob-code-inner js-file-line">                <span class="pl-c">// Clear callback if not expecting any more results</span></td>
+      </tr>
+      <tr>
+        <td id="L223" class="blob-num js-line-number" data-line-number="223"></td>
+        <td id="LC223" class="blob-code blob-code-inner js-file-line">                <span class="pl-k">if</span> (<span class="pl-k">!</span>keepCallback) {</td>
+      </tr>
+      <tr>
+        <td id="L224" class="blob-num js-line-number" data-line-number="224"></td>
+        <td id="LC224" class="blob-code blob-code-inner js-file-line">                    <span class="pl-k">delete</span> cordova.callbacks[callbackId];</td>
+      </tr>
+      <tr>
+        <td id="L225" class="blob-num js-line-number" data-line-number="225"></td>
+        <td id="LC225" class="blob-code blob-code-inner js-file-line">                }</td>
+      </tr>
+      <tr>
+        <td id="L226" class="blob-num js-line-number" data-line-number="226"></td>
+        <td id="LC226" class="blob-code blob-code-inner js-file-line">            }</td>
+      </tr>
+      <tr>
+        <td id="L227" class="blob-num js-line-number" data-line-number="227"></td>
+        <td id="LC227" class="blob-code blob-code-inner js-file-line">        }</td>
+      </tr>
+      <tr>
+        <td id="L228" class="blob-num js-line-number" data-line-number="228"></td>
+        <td id="LC228" class="blob-code blob-code-inner js-file-line">        <span class="pl-k">catch</span> (err) {</td>
+      </tr>
+      <tr>
+        <td id="L229" class="blob-num js-line-number" data-line-number="229"></td>
+        <td id="LC229" class="blob-code blob-code-inner js-file-line">            <span class="pl-k">var</span> msg <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">&quot;</span>Error in <span class="pl-pds">&quot;</span></span> <span class="pl-k">+</span> (isSuccess <span class="pl-k">?</span> <span class="pl-s"><span class="pl-pds">&quot;</span>Success<span class="pl-pds">&quot;</span></span> <span class="pl-k">:</span> <span class="pl-s"><span class="pl-pds">&quot;</span>Error<span class="pl-pds">&quot;</span></span>) <span class="pl-k">+</span> <span class="pl-s"><span class="pl-pds">&quot;</span> callbackId: <span class="pl-pds">&quot;</span></span> <span class="pl-k">+</span> callbackId <span class="pl-k">+</span> <span class="pl-s"><span class="pl-pds">&quot;</span> : <span class="pl-pds">&quot;</span></span> <span class="pl-k">+</span> err;</td>
+      </tr>
+      <tr>
+        <td id="L230" class="blob-num js-line-number" data-line-number="230"></td>
+        <td id="LC230" class="blob-code blob-code-inner js-file-line">            <span class="pl-en">console</span> <span class="pl-k">&amp;&amp;</span> <span class="pl-en">console</span>.log <span class="pl-k">&amp;&amp;</span> <span class="pl-en">console</span>.<span class="pl-c1">log</span>(msg);</td>
+      </tr>
+      <tr>
+        <td id="L231" class="blob-num js-line-number" data-line-number="231"></td>
+        <td id="LC231" class="blob-code blob-code-inner js-file-line">            cordova.fireWindowEvent(<span class="pl-s"><span class="pl-pds">&quot;</span>cordovacallbackerror<span class="pl-pds">&quot;</span></span>, { <span class="pl-s"><span class="pl-pds">&#39;</span>message<span class="pl-pds">&#39;</span></span><span class="pl-k">:</span> msg });</td>
+      </tr>
+      <tr>
+        <td id="L232" class="blob-num js-line-number" data-line-number="232"></td>
+        <td id="LC232" class="blob-code blob-code-inner js-file-line">            <span class="pl-k">throw</span> err;</td>
+      </tr>
+      <tr>
+        <td id="L233" class="blob-num js-line-number" data-line-number="233"></td>
+        <td id="LC233" class="blob-code blob-code-inner js-file-line">        }</td>
+      </tr>
+      <tr>
+        <td id="L234" class="blob-num js-line-number" data-line-number="234"></td>
+        <td id="LC234" class="blob-code blob-code-inner js-file-line">    },</td>
+      </tr>
+      <tr>
+        <td id="L235" class="blob-num js-line-number" data-line-number="235"></td>
+        <td id="LC235" class="blob-code blob-code-inner js-file-line">    <span class="pl-en">addConstructor</span><span class="pl-k">:</span> <span class="pl-k">function</span>(<span class="pl-smi">func</span>) {</td>
+      </tr>
+      <tr>
+        <td id="L236" class="blob-num js-line-number" data-line-number="236"></td>
+        <td id="LC236" class="blob-code blob-code-inner js-file-line">        channel.onCordovaReady.subscribe(<span class="pl-k">function</span>() {</td>
+      </tr>
+      <tr>
+        <td id="L237" class="blob-num js-line-number" data-line-number="237"></td>
+        <td id="LC237" class="blob-code blob-code-inner js-file-line">            <span class="pl-k">try</span> {</td>
+      </tr>
+      <tr>
+        <td id="L238" class="blob-num js-line-number" data-line-number="238"></td>
+        <td id="LC238" class="blob-code blob-code-inner js-file-line">                func();</td>
+      </tr>
+      <tr>
+        <td id="L239" class="blob-num js-line-number" data-line-number="239"></td>
+        <td id="LC239" class="blob-code blob-code-inner js-file-line">            } <span class="pl-k">catch</span>(e) {</td>
+      </tr>
+      <tr>
+        <td id="L240" class="blob-num js-line-number" data-line-number="240"></td>
+        <td id="LC240" class="blob-code blob-code-inner js-file-line">                <span class="pl-en">console</span>.<span class="pl-c1">log</span>(<span class="pl-s"><span class="pl-pds">&quot;</span>Failed to run constructor: <span class="pl-pds">&quot;</span></span> <span class="pl-k">+</span> e);</td>
+      </tr>
+      <tr>
+        <td id="L241" class="blob-num js-line-number" data-line-number="241"></td>
+        <td id="LC241" class="blob-code blob-code-inner js-file-line">            }</td>
+      </tr>
+      <tr>
+        <td id="L242" class="blob-num js-line-number" data-line-number="242"></td>
+        <td id="LC242" class="blob-code blob-code-inner js-file-line">        });</td>
+      </tr>
+      <tr>
+        <td id="L243" class="blob-num js-line-number" data-line-number="243"></td>
+        <td id="LC243" class="blob-code blob-code-inner js-file-line">    }</td>
+      </tr>
+      <tr>
+        <td id="L244" class="blob-num js-line-number" data-line-number="244"></td>
+        <td id="LC244" class="blob-code blob-code-inner js-file-line">};</td>
+      </tr>
+      <tr>
+        <td id="L245" class="blob-num js-line-number" data-line-number="245"></td>
+        <td id="LC245" class="blob-code blob-code-inner js-file-line">
+</td>
+      </tr>
+      <tr>
+        <td id="L246" class="blob-num js-line-number" data-line-number="246"></td>
+        <td id="LC246" class="blob-code blob-code-inner js-file-line">
+</td>
+      </tr>
+      <tr>
+        <td id="L247" class="blob-num js-line-number" data-line-number="247"></td>
+        <td id="LC247" class="blob-code blob-code-inner js-file-line"><span class="pl-c1">module</span>.exports <span class="pl-k">=</span> cordova;</td>
+      </tr>
+</table>
+
+  </div>
+
+</div>
+
+<a href="#jump-to-line" rel="facebox[.linejump]" data-hotkey="l" style="display:none">Jump to Line</a>
+<div id="jump-to-line" style="display:none">
+  <!-- </textarea> --><!-- '"` --><form accept-charset="UTF-8" action="" class="js-jump-to-line-form" method="get"><div style="margin:0;padding:0;display:inline"><input name="utf8" type="hidden" value="&#x2713;" /></div>
+    <input class="linejump-input js-jump-to-line-field" type="text" placeholder="Jump to line&hellip;" aria-label="Jump to line" autofocus>
+    <button type="submit" class="btn">Go</button>
+</form></div>
+
+        </div>
+      </div>
+      <div class="modal-backdrop"></div>
+    </div>
+  </div>
+
+
+    </div>
+
+      <div class="container">
+  <div class="site-footer" role="contentinfo">
+    <ul class="site-footer-links right">
+        <li><a href="https://status.github.com/" data-ga-click="Footer, go to status, text:status">Status</a></li>
+      <li><a href="https://developer.github.com" data-ga-click="Footer, go to api, text:api">API</a></li>
+      <li><a href="https://training.github.com" data-ga-click="Footer, go to training, text:training">Training</a></li>
+      <li><a href="https://shop.github.com" data-ga-click="Footer, go to shop, text:shop">Shop</a></li>
+        <li><a href="https://github.com/blog" data-ga-click="Footer, go to blog, text:blog">Blog</a></li>
+        <li><a href="https://github.com/about" data-ga-click="Footer, go to about, text:about">About</a></li>
+        <li><a href="https://github.com/pricing" data-ga-click="Footer, go to pricing, text:pricing">Pricing</a></li>
+
+    </ul>
+
+    <a href="https://github.com" aria-label="Homepage">
+      <span class="mega-octicon octicon-mark-github" title="GitHub"></span>
+</a>
+    <ul class="site-footer-links">
+      <li>&copy; 2015 <span title="0.03723s from github-fe129-cp1-prd.iad.github.net">GitHub</span>, Inc.</li>
+        <li><a href="https://github.com/site/terms" data-ga-click="Footer, go to terms, text:terms">Terms</a></li>
+        <li><a href="https://github.com/site/privacy" data-ga-click="Footer, go to privacy, text:privacy">Privacy</a></li>
+        <li><a href="https://github.com/security" data-ga-click="Footer, go to security, text:security">Security</a></li>
+        <li><a href="https://github.com/contact" data-ga-click="Footer, go to contact, text:contact">Contact</a></li>
+        <li><a href="https://help.github.com" data-ga-click="Footer, go to help, text:help">Help</a></li>
+    </ul>
+  </div>
+</div>
+
+
+
+    
+    
+    
+
+    <div id="ajax-error-message" class="flash flash-error">
+      <span class="octicon octicon-alert"></span>
+      <button type="button" class="flash-close js-flash-close js-ajax-error-dismiss" aria-label="Dismiss error">
+        <span class="octicon octicon-x"></span>
+      </button>
+      Something went wrong with that request. Please try again.
+    </div>
+
+
+      <script crossorigin="anonymous" src="https://assets-cdn.github.com/assets/frameworks-2e7fc3d264a208e1383de85b815379beccff56c1f977714515d4cac7820eef3e.js"></script>
+      <script async="async" crossorigin="anonymous" src="https://assets-cdn.github.com/assets/github-ad3afa2166b01280a8ade8889a9a7dea8ec9428d62c892b216456b35e9574dcc.js"></script>
+      
+      
+    <div class="js-stale-session-flash stale-session-flash flash flash-warn flash-banner hidden">
+      <span class="octicon octicon-alert"></span>
+      <span class="signed-in-tab-flash">You signed in with another tab or window. <a href="">Reload</a> to refresh your session.</span>
+      <span class="signed-out-tab-flash">You signed out in another tab or window. <a href="">Reload</a> to refresh your session.</span>
+    </div>
+  </body>
+</html>
+
