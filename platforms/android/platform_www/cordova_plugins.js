@@ -13,12 +13,21 @@ module.exports = [
         "clobbers": [
             "ProgressIndicator"
         ]
+    },
+    {
+        "file": "plugins/cordova-plugin-splashscreen/www/splashscreen.js",
+        "id": "cordova-plugin-splashscreen.SplashScreen",
+        "pluginId": "cordova-plugin-splashscreen",
+        "clobbers": [
+            "navigator.splashscreen"
+        ]
     }
 ];
 module.exports.metadata = 
 // TOP OF METADATA
 {
-    "org.pbernasconi.progressindicator": "1.1.0"
+    "org.pbernasconi.progressindicator": "1.1.0",
+    "cordova-plugin-splashscreen": "3.0.0"
 }
 // BOTTOM OF METADATA
 });

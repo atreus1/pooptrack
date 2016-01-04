@@ -95,6 +95,10 @@ angular.module('starter.controllers', ['ngCordova'])
 .controller('GlobalFeedCtrl', function($scope, $state, DBService) {
   var sendData = {'tag':'getFeed', 'user_id':window.localStorage['user_id']};
 
+  $scope.$on('$ionicView.beforeEnter', function() {
+    $scope.doRefresh();
+  });
+
   // Update feed from database
   $scope.doRefresh = function() {
     DBService.sendToDB(sendData, false).then(function(promise) {
