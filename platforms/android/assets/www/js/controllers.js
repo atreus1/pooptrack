@@ -92,19 +92,14 @@ angular.module('starter.controllers', ['ngCordova'])
 // ##################################################################
 
 // Controller for tab-feed-global.html
-.controller('GlobalFeedCtrl', function($scope, DBService) {
+.controller('GlobalFeedCtrl', function($scope, $state, DBService) {
   var sendData = {'tag':'getFeed', 'user_id':window.localStorage['user_id']};
-
-  // Update feed when user enters scene
-  $scope.$on('$ionicView.beforeEnter', function() {
-    $scope.doRefresh();
-  });
 
   // Update feed from database
   $scope.doRefresh = function() {
     DBService.sendToDB(sendData, false).then(function(promise) {
       if (promise.data.success === 1) {
-        $scope.feed = promise.data.feed;
+         $scope.feed = promise.data.feed;
         window.localStorage.setItem("feed", JSON.stringify(promise.data.feed)); // Not doing anything with the data?
       }
     }).finally(function() {
@@ -112,6 +107,13 @@ angular.module('starter.controllers', ['ngCordova'])
       $scope.$broadcast('scroll.refreshComplete');
     });
   };
+    // Update feed when user enters scene
+  $scope.$on('$stateChangeSuccess', function(event, toState) {
+      if (toState.name === "tab.feed") {
+        $scope.doRefresh();
+    }
+  });
+
 })
 
 // ##################################################################
@@ -202,19 +204,27 @@ angular.module('starter.controllers', ['ngCordova'])
 // ##################################################################
 
 // Controller for tab-add.html
-.controller('AddCtrl', function($scope, $http, $ionicPopup, $cordovaGeolocation, $state, $ionicListDelegate) {
+.controller('AddCtrl', function($scope, $http, $ionicPopup, $cordovaGeolocation, $state, $ionicListDelegate, DBService) {
+
+  var sendData = {'tag':'getPoopType'};
 
   // Update feed when user enters scene
   $scope.$on('$ionicView.beforeEnter', function() {
-    if(window.localStorage['poops'] == undefined) {  // Needs to be re-written to target actual database
-      $http.get('http://tolva.nu/poop/getPoops.php')
-      .success(function(data) {
-        $scope.poops = data;
-           window.localStorage.setItem("poops", JSON.stringify(data));
-       });
-    } 
-    $scope.poops = JSON.parse(window.localStorage.getItem("poops"));
+    $scope.doRefresh();
   });
+
+  // Update feed from database
+  $scope.doRefresh = function() {
+    DBService.sendToDB(sendData, false).then(function(promise) {
+      if (promise.data.success === 1) {
+        $scope.poop = promise.data.poop;
+        window.localStorage.setItem("poop", JSON.stringify(promise.data.poop)); // Not doing anything with the data?
+      }
+    }).finally(function() {
+      // Stop the ion-refresher from spinning
+      $scope.$broadcast('scroll.refreshComplete');
+    });
+  };
 
   // Poop descriptions
   $scope.desc = function(desc) {
@@ -247,7 +257,12 @@ angular.module('starter.controllers', ['ngCordova'])
   $scope.add = {};
   $scope.add.rangeValue = 40;
   $scope.add.comment = "";
-  
+  $scope.add.atr = [
+    { text: "Sticky", checked: false },
+    { text: "#nowipe", checked: false },
+    { text: "splashback", checked: false }
+  ];
+
   // Update slider value when dragging
   $scope.$watch('add.rangeValue',function(newVal, oldVal){
      $scope.add.rangeValue = parseInt(newVal);
@@ -255,17 +270,16 @@ angular.module('starter.controllers', ['ngCordova'])
 
   // Add new poop event to database
   $scope.addToDatabase = function(type) {
-    var sendData = {'tag':"addPoop", 'user_id':window.localStorage['user_id'], 'type':type, 'comment':$scope.add.comment, 'location':lat+","+longi, 'rate':$scope.add.rangeValue};
+    var sendData = {'tag':"addPoop", 'user_id':window.localStorage['user_id'], 'type':type, 'comment':$scope.add.comment, 'location':lat+","+longi, 'rate':$scope.add.rangeValue, 'sticky':$scope.add.atr[0].checked, 'nowipe':$scope.add.atr[1].checked, 'splashback':$scope.add.atr[2].checked};
 
     DBService.sendToDB(sendData, false).then(function(promise) {});
 
     // Back out from inner view
     $ionicHistory.goBack();
-
     setTimeout(function(){
       // Go to feed
-      $state.go('tab.feed');
-    }, 100);
+     $state.go('tab.feed');
+    }, 300);
   };
 })
 
@@ -412,7 +426,6 @@ angular.module('starter.controllers', ['ngCordova'])
 
       $http.post(url, sendData)
       .success(function(data, status, headers, config) {
-        console.log(data);
         if (data.success === 1) {
           $scope.count = data.count;
           $scope.most_used = data.most_used;
